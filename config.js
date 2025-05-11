@@ -18,8 +18,8 @@ const getLocalIpAddress = () => {
 module.exports = {
   // 伺服器設定
   server: {
-    port: process.env.PORT || 5001,
-    host: process.env.HOST || getLocalIpAddress(), // 使用本機 IP 地址
+    port: process.env.REACT_APP_API_PORT || 5001,
+    host: process.env.REACT_APP_API_HOST  || getLocalIpAddress(), // 使用本機 IP 地址
     corsOrigins: ['http://localhost:3000', `http://${getLocalIpAddress()}:3000`], // 允許的來源
   },
   

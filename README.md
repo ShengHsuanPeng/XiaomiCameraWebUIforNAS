@@ -95,7 +95,7 @@ npm start
 ### 伺服器設定
 ```javascript
 server: {
-  port: process.env.PORT || 5001, // 伺服器端口
+  port: process.env.REACT_APP_API_PORT || 5001, // 伺服器端口
 }
 ```
 
