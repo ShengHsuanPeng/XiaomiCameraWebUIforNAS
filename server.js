@@ -1,6 +1,9 @@
 // 載入環境變數
 require('dotenv').config();
 
+// 全局對象用於追蹤正在處理中的縮略圖，避免重複處理
+global.processingThumbnails = {};
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs').promises;
@@ -164,52 +167,83 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
       return thumbnailCache.get(cacheKey);
     }
     
-    // 檢查縮略圖是否已存在
+    // 創建進行中的處理標記，避免重複處理
+    if (global.processingThumbnails[cacheKey]) {
+      console.log(`縮略圖 ${cacheKey} 正在處理中，跳過重複請求`);
+      return null;
+    }
+    
+    // 標記為處理中
+    global.processingThumbnails[cacheKey] = true;
+    
     try {
-      await fs.access(thumbnailPath);
-      // 如果縮略圖已存在，直接返回路徑並存入快取
-      const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
-      thumbnailCache.set(cacheKey, relativePath);
-      return relativePath;
-    } catch (error) {
-      // 縮略圖不存在，需要生成
-      // 確保縮略圖目錄存在
-      await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
-      
-      return new Promise((resolve, reject) => {
-        // 添加超時處理，避免無限等待
-        const timeoutId = setTimeout(() => {
-          console.warn(`縮略圖生成超時: ${videoPath}`);
-          // 超時時使用錯誤圖片並記錄失敗
-          thumbnailFailCache.add(cacheKey);
-          useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
-        }, THUMBNAIL_GENERATION_TIMEOUT);
+      // 檢查縮略圖是否已存在
+      try {
+        await fs.access(thumbnailPath);
+        // 如果縮略圖已存在，直接返回路徑並存入快取
+        const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
+        thumbnailCache.set(cacheKey, relativePath);
         
-        console.log(`開始生成縮略圖: ${videoPath}`);
-        ffmpeg(videoPath)
-          .on('error', (err) => {
-            clearTimeout(timeoutId); // 清除超時
-            console.error('生成縮略圖失敗:', err);
-            // 記錄失敗以避免重複嘗試
+        // 移除處理中標記
+        delete global.processingThumbnails[cacheKey];
+        
+        return relativePath;
+      } catch (error) {
+        // 縮略圖不存在，需要生成
+        // 確保縮略圖目錄存在
+        await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
+        
+        return new Promise((resolve, reject) => {
+          // 添加超時處理，避免無限等待
+          const timeoutId = setTimeout(() => {
+            console.warn(`縮略圖生成超時: ${videoPath}`);
+            // 超時時使用錯誤圖片並記錄失敗
             thumbnailFailCache.add(cacheKey);
-            // 失敗時使用錯誤圖片
+            
+            // 移除處理中標記
+            delete global.processingThumbnails[cacheKey];
+            
             useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
-          })
-          .on('end', () => {
-            clearTimeout(timeoutId); // 清除超時
-            const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
-            // 存入快取
-            thumbnailCache.set(cacheKey, relativePath);
-            resolve(relativePath);
-          })
-          .screenshots({
-            count: 1,
-            folder: path.dirname(thumbnailPath),
-            filename: path.basename(thumbnailPath),
-            size: '320x180', // 16:9 縮略圖大小
-            timestamps: ['5%'] // 從影片開始的 5% 位置取截圖，避免黑畫面
-          });
-      });
+          }, THUMBNAIL_GENERATION_TIMEOUT);
+          
+          console.log(`開始生成縮略圖: ${videoPath}`);
+          ffmpeg(videoPath)
+            .on('error', (err) => {
+              clearTimeout(timeoutId); // 清除超時
+              console.error('生成縮略圖失敗:', err);
+              // 記錄失敗以避免重複嘗試
+              thumbnailFailCache.add(cacheKey);
+              
+              // 移除處理中標記
+              delete global.processingThumbnails[cacheKey];
+              
+              // 失敗時使用錯誤圖片
+              useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
+            })
+            .on('end', () => {
+              clearTimeout(timeoutId); // 清除超時
+              const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
+              // 存入快取
+              thumbnailCache.set(cacheKey, relativePath);
+              
+              // 移除處理中標記
+              delete global.processingThumbnails[cacheKey];
+              
+              resolve(relativePath);
+            })
+            .screenshots({
+              count: 1,
+              folder: path.dirname(thumbnailPath),
+              filename: path.basename(thumbnailPath),
+              size: '320x180', // 16:9 縮略圖大小
+              timestamps: ['5%'] // 從影片開始的 5% 位置取截圖，避免黑畫面
+            });
+        });
+      }
+    } catch (error) {
+      // 移除處理中標記
+      delete global.processingThumbnails[cacheKey];
+      throw error;
     }
   } catch (error) {
     console.error('處理縮略圖時發生錯誤:', error);
@@ -642,6 +676,12 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
       return res.sendFile(DEFAULT_ERROR_IMAGE);
     }
     
+    // 檢查是否正在處理中
+    if (global.processingThumbnails[cacheKey]) {
+      console.log(`縮略圖 ${cacheKey} 正在處理中，返回等待中狀態`);
+      return res.status(202).json({ status: 'processing', message: '縮略圖正在生成中，請稍後再試' });
+    }
+    
     // 解析日期字符串
     const dateInfo = parseDateString(dateStr);
     const formattedDate = dateInfo.formatted;
@@ -686,9 +726,13 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
       // 縮略圖不存在，需要生成
       console.log(`為相機 ${cameraId} 日期 ${dateStr} 生成縮略圖`);
       
+      // 標記為處理中
+      global.processingThumbnails[cacheKey] = true;
+      
       // 添加超時處理
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
+          delete global.processingThumbnails[cacheKey];
           reject(new Error('縮略圖生成超時'));
         }, THUMBNAIL_GENERATION_TIMEOUT);
       });
@@ -700,9 +744,11 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
           .on('error', (err) => {
             console.error('生成縮略圖失敗:', err);
             thumbnailFailCache.add(cacheKey);
+            delete global.processingThumbnails[cacheKey];
             reject(err);
           })
           .on('end', () => {
+            delete global.processingThumbnails[cacheKey];
             resolve(thumbnailPath);
           })
           .screenshots({
@@ -721,6 +767,7 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
       } catch (err) {
         console.error('縮略圖生成失敗或超時:', err);
         thumbnailFailCache.add(cacheKey);
+        delete global.processingThumbnails[cacheKey];
         
         // 使用預設錯誤圖片
         try {
