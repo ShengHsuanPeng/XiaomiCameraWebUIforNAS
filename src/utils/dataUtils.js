@@ -86,6 +86,35 @@ export const getDateVideos = async (cameraId, date) => {
   }
 };
 
+// 獲取特定影片的時長
+export const getVideoDuration = async (cameraId, date, videoId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/video-duration/${cameraId}/${date}/${videoId}`);
+    if (!response.ok) {
+      throw new Error(`HTTP 錯誤: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.duration;
+  } catch (error) {
+    console.error(`獲取影片 ${videoId} 的時長失敗:`, error);
+    return '未知';
+  }
+};
+
+// 觸發批量處理影片資訊 (用於大量影片處理)
+export const processVideos = async (cameraId, date) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/process-videos/${cameraId}/${date}`);
+    if (!response.ok) {
+      throw new Error(`HTTP 錯誤: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`觸發批量處理影片失敗:`, error);
+    return { status: 'error', message: error.message };
+  }
+};
+
 // 獲取影片路徑
 export const getVideoPath = (cameraId, date, videoName) => {
   return `${API_BASE_URL}${BASE_PATH}/${cameraId}/${date}/${videoName}`;
@@ -118,4 +147,7 @@ export const parseDateString = (dateStr) => {
     hour,
     formatted: `${year}-${month}-${day} ${hour}:00`
   };
-}; 
+};
+
+// 導出 API 基礎 URL，方便其他模組使用
+export { getApiBaseUrl }; 

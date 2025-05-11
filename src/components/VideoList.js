@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { getDateVideos, formatTimestamp, parseDateString } from '../utils/dataUtils';
+import { getDateVideos, formatTimestamp, parseDateString, getVideoDuration, processVideos, getApiBaseUrl } from '../utils/dataUtils';
 import theme from '../utils/theme';
 import { io } from 'socket.io-client';
 
@@ -259,6 +259,11 @@ const useResponsiveColumns = () => {
   return { isMobile };
 };
 
+// 建立一個專門用來存儲影片時長的全局變數
+let globalVideoDurations = {};
+let firstVideoProcessed = false;
+let firstVideoInfo = { id: null, duration: null };
+
 const VideoList = () => {
   const { cameraId, date } = useParams();
   const [videos, setVideos] = useState([]);
@@ -270,11 +275,13 @@ const VideoList = () => {
   const [thumbnailLoading, setThumbnailLoading] = useState({});
   const [socketConnected, setSocketConnected] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0); // 用於顯示處理進度
+  const [socketRetries, setSocketRetries] = useState(0); // 追蹤 WebSocket 重連次數
   
   // 使用 ref 追蹤已處理的影片數量和其他持久性狀態
   const processedCount = useRef(0);
   const socketRef = useRef(null);
   const completionTimeoutRef = useRef(null);
+  const videoListRef = useRef([]);  // 用來追踪當前載入的影片列表
   
   // 獲取API基礎URL
   const getApiBaseUrl = useCallback(() => {
@@ -294,10 +301,18 @@ const VideoList = () => {
   
   // 處理縮略圖載入錯誤
   const handleThumbnailError = (videoId) => {
+    console.warn(`縮略圖 ${videoId} 載入失敗，使用占位圖`);
     setThumbnailErrors(prev => ({
       ...prev,
       [videoId]: true
     }));
+    // 錯誤後自動重試一次
+    setTimeout(() => {
+      setThumbnailErrors(prev => ({
+        ...prev,
+        [videoId]: false
+      }));
+    }, 3000); // 3秒後重試
   };
   
   // 處理縮略圖載入狀態
@@ -313,9 +328,14 @@ const VideoList = () => {
     // 只有實際更新了有效時長才增加計數
     const isValidDuration = duration && duration !== '載入中';
     
+    // 儲存到全局變量以便在跨頁面時保持
+    if (isValidDuration) {
+      globalVideoDurations[videoId] = duration;
+    }
+    
     setVideos(prevVideos => {
       const updatedVideo = { ...prevVideos.find(v => v.id === videoId) };
-      if (updatedVideo.duration === '載入中' && isValidDuration) {
+      if (updatedVideo && updatedVideo.duration === '載入中' && isValidDuration) {
         // 只有從「載入中」變為實際時長時才增加計數
         processedCount.current += 1;
       }
@@ -329,10 +349,38 @@ const VideoList = () => {
   
   // 更新特定影片的縮略圖
   const updateVideoThumbnail = useCallback((videoId, thumbnail) => {
+    console.log(`更新影片 ${videoId} 的縮略圖`);
     setVideos(prevVideos => prevVideos.map(video => 
       video.id === videoId ? { ...video, thumbnail } : video
     ));
+    
+    // 縮略圖生成成功後，清除錯誤狀態
+    setThumbnailErrors(prev => ({
+      ...prev,
+      [videoId]: false
+    }));
   }, []);
+  
+  // 使用預載入技術預先載入下一批縮略圖
+  const preloadNextThumbnails = useCallback((currentVideoIndex, count = 3) => {
+    if (!videoListRef.current || videoListRef.current.length === 0) return;
+    
+    const startIdx = currentVideoIndex + 1;
+    const endIdx = Math.min(startIdx + count, videoListRef.current.length);
+    
+    for (let i = startIdx; i < endIdx; i++) {
+      const video = videoListRef.current[i];
+      if (!video) continue;
+      
+      const img = new Image();
+      const thumbnailUrl = video.thumbnail 
+        ? `${getApiBaseUrl()}${video.thumbnail}` 
+        : `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${video.id}.jpg`;
+        
+      img.src = thumbnailUrl;
+      console.log(`預載入縮略圖: ${video.id}`);
+    }
+  }, [cameraId, date, getApiBaseUrl]);
   
   // 設置 WebSocket 連接
   useEffect(() => {
@@ -343,7 +391,7 @@ const VideoList = () => {
     // 初始化 WebSocket
     const initSocket = () => {
       const socket = io(getApiBaseUrl(), {
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10, // 增加重連次數
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 20000
@@ -355,6 +403,7 @@ const VideoList = () => {
       socket.on('connect', () => {
         console.log('WebSocket 連接成功');
         setSocketConnected(true);
+        setSocketRetries(0); // 重置重試計數
         socket.emit('joinRoom', { cameraId, date });
       });
       
@@ -366,13 +415,15 @@ const VideoList = () => {
       
       // 嘗試重新連接
       socket.on('reconnect_attempt', (attemptNumber) => {
-        console.log(`嘗試重新連接 (${attemptNumber}/5)`);
+        console.log(`嘗試重新連接 (${attemptNumber}/10)`);
+        setSocketRetries(attemptNumber);
       });
       
       // 重新連接成功
       socket.on('reconnect', () => {
         console.log('WebSocket 重新連接成功');
         setSocketConnected(true);
+        setSocketRetries(0); // 重置重試計數
         socket.emit('joinRoom', { cameraId, date });
       });
       
@@ -391,6 +442,12 @@ const VideoList = () => {
         if (data.videoId && data.thumbnail) {
           console.log(`收到影片 ${data.videoId} 的縮略圖更新`);
           updateVideoThumbnail(data.videoId, data.thumbnail);
+          
+          // 找到當前影片在列表中的位置，預載入接下來的縮略圖
+          const videoIndex = videoListRef.current.findIndex(v => v.id === data.videoId);
+          if (videoIndex !== -1) {
+            preloadNextThumbnails(videoIndex);
+          }
         }
       });
       
@@ -403,9 +460,48 @@ const VideoList = () => {
           return;
         }
         
+        // 特別處理第一個影片
+        if (data.isFirstVideo || (firstVideoInfo.id && data.videoId === firstVideoInfo.id)) {
+          console.log(`接收到第一個影片 ${data.videoId} 的時長更新：${data.duration}`);
+          
+          // 立即保存第一個影片時長
+          if (data.duration && data.duration !== '載入中') {
+            firstVideoInfo.duration = data.duration;
+            firstVideoProcessed = true;
+          }
+          
+          // 用多種方式確保第一個影片更新成功
+          updateVideoDuration(data.videoId, data.duration);
+          
+          // 立即更新狀態
+          setVideos(prevVideos => {
+            if (prevVideos.length > 0 && prevVideos[0].id === data.videoId) {
+              return [
+                { ...prevVideos[0], duration: data.duration },
+                ...prevVideos.slice(1)
+              ];
+            }
+            return prevVideos;
+          });
+          
+          // 為確保更新，再次延遲處理
+          setTimeout(() => {
+            setVideos(prevVideos => {
+              if (prevVideos.length > 0 && prevVideos[0].id === data.videoId && 
+                  (prevVideos[0].duration === '載入中' || !prevVideos[0].duration)) {
+                console.log(`再次確認更新第一個影片 ${data.videoId} 的時長`);
+                return [
+                  { ...prevVideos[0], duration: data.duration },
+                  ...prevVideos.slice(1)
+                ];
+              }
+              return prevVideos;
+            });
+          }, 500);
+        }
+        
         // 更新處理進度（基於伺服器發送的索引）
         if (data.index !== undefined && data.total) {
-          // 計算進度時加 1，因為索引從 0 開始但我們顯示的是已處理的數量
           const progress = Math.min(100, Math.round(((data.index + 1) / data.total) * 100));
           setLoadingProgress(progress);
           console.log(`更新進度：${progress}% (${data.index + 1}/${data.total})`);
@@ -448,6 +544,11 @@ const VideoList = () => {
           
           return prevVideos;
         });
+        
+        // 3秒後自動隱藏進度顯示
+        setTimeout(() => {
+          setLoadingProgress(prevProgress => prevProgress === 100 ? 101 : prevProgress); // 101表示完成且應該隱藏
+        }, 3000);
       });
       
       // 連接錯誤處理
@@ -491,7 +592,7 @@ const VideoList = () => {
         socketInstance.disconnect();
       }
     };
-  }, [cameraId, date, getApiBaseUrl, updateVideoDuration, updateVideoThumbnail]);
+  }, [cameraId, date, getApiBaseUrl, updateVideoDuration, updateVideoThumbnail, preloadNextThumbnails]);
   
   // 載入影片列表
   useEffect(() => {
@@ -500,9 +601,112 @@ const VideoList = () => {
         // 重置已處理計數
         processedCount.current = 0;
         setLoadingProgress(0);
+        firstVideoProcessed = false; // 重置第一個影片處理狀態
         
+        // 加載影片列表
         const videoList = await getDateVideos(cameraId, date);
-        setVideos(videoList);
+        
+        // 保存影片列表到 ref 以便在其他地方使用
+        videoListRef.current = videoList;
+        
+        // 套用全局變量中已有的時長資料（如果有）
+        const updatedVideoList = videoList.map(video => {
+          // 檢查是否有緩存的時長資料
+          if (globalVideoDurations[video.id]) {
+            return {
+              ...video, 
+              duration: globalVideoDurations[video.id]
+            };
+          }
+          
+          // 如果有儲存的第一個影片資訊，直接套用
+          if (firstVideoInfo.id === video.id && firstVideoInfo.duration) {
+            return {
+              ...video,
+              duration: firstVideoInfo.duration
+            };
+          }
+          
+          return video;
+        });
+        
+        setVideos(updatedVideoList);
+        
+        // 預載入前幾個縮略圖
+        for (let i = 0; i < Math.min(5, videoList.length); i++) {
+          preloadNextThumbnails(i-1, 1); // 一次預載入一個
+        }
+        
+        // 保存第一個影片的ID
+        if (videoList.length > 0) {
+          firstVideoInfo.id = videoList[0].id;
+          
+          // 立即發送請求獲取第一個影片資訊
+          setTimeout(() => {
+            const socket = socketRef.current;
+            if (socket && socket.connected) {
+              console.log('主動請求第一個影片資訊');
+              socket.emit('requestVideoInfo', { 
+                cameraId, 
+                date, 
+                videoId: videoList[0].id,
+                priority: 'high'
+              });
+            }
+          }, 500);
+          
+          // 3秒後再次檢查並請求
+          setTimeout(() => {
+            setVideos(prevVideos => {
+              if (prevVideos.length > 0 && prevVideos[0].duration === '載入中') {
+                console.log('3秒後仍未獲得第一個影片時長，再次請求');
+                const socket = socketRef.current;
+                if (socket && socket.connected) {
+                  socket.emit('requestVideoInfo', { 
+                    cameraId, 
+                    date, 
+                    videoId: prevVideos[0].id,
+                    priority: 'urgent'
+                  });
+                }
+              }
+              return prevVideos;
+            });
+          }, 3000);
+          
+          // 6秒後最後檢查
+          setTimeout(() => {
+            setVideos(prevVideos => {
+              if (prevVideos.length > 0 && prevVideos[0].duration === '載入中') {
+                console.log('6秒後仍未獲得第一個影片時長，使用緊急方案');
+                // 使用新的直接 API 獲取影片時長
+                getVideoDuration(cameraId, date, prevVideos[0].id)
+                  .then(duration => {
+                    if (duration) {
+                      console.log(`透過API獲取到第一個影片時長: ${duration}`);
+                      updateVideoDuration(prevVideos[0].id, duration);
+                      firstVideoInfo.duration = duration;
+                    }
+                  })
+                  .catch(err => console.error('獲取第一個影片時長失敗:', err));
+              }
+              return prevVideos;
+            });
+          }, 6000);
+        }
+        
+        // 在加載完列表後，觸發後端批量處理
+        if (videoList.length > 0) {
+          setTimeout(() => {
+            processVideos(cameraId, date)
+              .then(response => {
+                console.log('觸發影片批量處理:', response);
+              })
+              .catch(error => {
+                console.error('觸發批量處理失敗:', error);
+              });
+          }, 1000);
+        }
       } catch (error) {
         console.error('載入影片列表失敗:', error);
       } finally {
@@ -513,11 +717,22 @@ const VideoList = () => {
     if (cameraId && date) {
       loadVideos();
     }
-  }, [cameraId, date]);
+  }, [cameraId, date, updateVideoDuration, preloadNextThumbnails]);
 
   if (loading) {
     return <div>載入中...</div>;
   }
+  
+  // 縮略圖載入優化函數 - 延遲載入不在可視區域的縮略圖
+  const getThumbnailUrl = (video) => {
+    if (thumbnailErrors[video.id]) {
+      return "/placeholder-thumbnail.svg";
+    }
+    
+    return video.thumbnail 
+      ? `${getApiBaseUrl()}${video.thumbnail}` 
+      : `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${video.id}.jpg`;
+  };
   
   return (
     <div>
@@ -557,7 +772,7 @@ const VideoList = () => {
                       )}
                       {!thumbnailErrors[video.id] ? (
                         <Thumbnail 
-                          src={video.thumbnail ? `${getApiBaseUrl()}${video.thumbnail}` : `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${video.id}.jpg`}
+                          src={getThumbnailUrl(video)}
                           alt={`${video.name} 縮略圖`}
                           onLoad={() => handleThumbnailLoading(video.id, false)}
                           onLoadStart={() => handleThumbnailLoading(video.id, true)}
@@ -566,6 +781,7 @@ const VideoList = () => {
                             handleThumbnailLoading(video.id, false);
                           }}
                           style={{ display: thumbnailLoading[video.id] ? 'none' : 'block' }}
+                          loading="lazy"
                         />
                       ) : (
                         <Thumbnail src="/placeholder-thumbnail.svg" alt="無縮略圖" />
@@ -608,7 +824,7 @@ const VideoList = () => {
                           )}
                           {!thumbnailErrors[video.id] ? (
                             <TableThumbnailImg 
-                              src={video.thumbnail ? `${getApiBaseUrl()}${video.thumbnail}` : `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${video.id}.jpg`}
+                              src={getThumbnailUrl(video)}
                               alt={`${video.name} 縮略圖`}
                               onLoad={() => handleThumbnailLoading(video.id, false)}
                               onLoadStart={() => handleThumbnailLoading(video.id, true)}
@@ -617,6 +833,7 @@ const VideoList = () => {
                                 handleThumbnailLoading(video.id, false);
                               }}
                               style={{ display: thumbnailLoading[video.id] ? 'none' : 'block' }}
+                              loading="lazy"
                             />
                           ) : (
                             <TableThumbnailImg src="/placeholder-thumbnail.svg" alt="無縮略圖" />
@@ -639,15 +856,15 @@ const VideoList = () => {
             </VideoTable>
           )}
           
-          {/* 處理狀態顯示移到底部 */}
-          {videos.length > 0 && (
+          {/* 處理狀態顯示移到底部，當進度為100%時3秒後隱藏 */}
+          {videos.length > 0 && loadingProgress < 101 && (
             <ProcessingStatus>
               <StatusTitle>處理進度</StatusTitle>
               <ConnectionStatus>
                 <StatusDetail>
                   <StatusLabel>伺服器狀態:</StatusLabel>
                   <ConnectionStatusItem connected={socketConnected}>
-                    {socketConnected ? '已連接' : '連接中斷'}
+                    {socketConnected ? '已連接' : `連接中斷 ${socketRetries > 0 ? `(重試 ${socketRetries}/10)` : ''}`}
                   </ConnectionStatusItem>
                 </StatusDetail>
                 <StatusDetail>
@@ -664,15 +881,18 @@ const VideoList = () => {
               </ConnectionStatus>
               <ProgressContainer>
                 <ProgressBar>
-                  <ProgressBarInner width={loadingProgress} />
+                  <ProgressBarInner width={loadingProgress > 100 ? 100 : loadingProgress} />
                 </ProgressBar>
-                <ProgressText>{loadingProgress}% 已處理</ProgressText>
+                <ProgressText>{loadingProgress > 100 ? 100 : loadingProgress}% 已處理</ProgressText>
               </ProgressContainer>
-              <ProcessingInfo>
-                {loadingProgress < 100 ? 
-                  '系統正在按順序處理影片資訊，若影片數量較多，可能需要較長時間...' : 
-                  '✅ 所有影片處理完成'}
-              </ProcessingInfo>
+              {loadingProgress < 100 && (
+                <ProcessingInfo>
+                  系統正在按順序處理影片資訊，若影片數量較多，可能需要較長時間...
+                </ProcessingInfo>
+              )}
+              <CompleteOverlay show={loadingProgress === 100}>
+                <CompleteText>處理完成!</CompleteText>
+              </CompleteOverlay>
             </ProcessingStatus>
           )}
         </>
@@ -688,6 +908,8 @@ const ProcessingStatus = styled.div`
   background-color: ${theme.background.paper};
   border-radius: 8px;
   box-shadow: ${theme.shadow.sm};
+  position: relative;
+  overflow: hidden;
 `;
 
 const StatusTitle = styled.h3`
@@ -720,6 +942,7 @@ const ConnectionStatusItem = styled.div`
   background-color: ${props => props.connected ? '#10b981' : '#ef4444'};
   color: white;
   display: inline-block;
+  transition: background-color 0.3s ease;
 `;
 
 const ProgressContainer = styled.div`
@@ -741,9 +964,12 @@ const ProgressBar = styled.div`
 const ProgressBarInner = styled.div`
   height: 100%;
   width: ${props => props.width}%;
-  background-color: ${theme.primary.main};
+  background-color: ${props => 
+    props.width < 30 ? theme.primary.light : 
+    props.width < 70 ? theme.primary.main : 
+    theme.primary.dark};
   border-radius: 5px;
-  transition: width 0.3s ease;
+  transition: width 0.5s ease, background-color 0.5s ease;
 `;
 
 const ProgressText = styled.div`
@@ -757,6 +983,28 @@ const ProcessingInfo = styled.div`
   color: ${theme.text.secondary};
   font-size: 0.9rem;
   font-style: italic;
+`;
+
+// 當進度為100%時的完成動畫
+const CompleteOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(16, 185, 129, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: ${props => props.show ? 1 : 0};
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+`;
+
+const CompleteText = styled.div`
+  color: #10b981;
+  font-size: 1.1rem;
+  font-weight: 600;
 `;
 
 export default VideoList; 

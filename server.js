@@ -66,14 +66,30 @@ app.use('/xiaomi_camera_videos', express.static(VIDEO_BASE_PATH));
 app.use(express.static(path.join(__dirname, 'build')));
 app.use('/thumbnails', express.static(THUMBNAIL_BASE_PATH));
 
+// 配置常數 - 可調整以平衡性能
+const THUMBNAIL_GENERATION_TIMEOUT = 20000; // 20秒超時
+const DURATION_QUERY_TIMEOUT = 15000;  // 15秒超時
+const VIDEO_BATCH_SIZE = 5; // 一批處理的影片數量
+const BATCH_INTERVAL = 500; // 批次之間的間隔時間 (毫秒)
+
+// 保存已處理的時長資訊的快取
+const durationCache = new Map();
+const thumbnailCache = new Map();
+
 // 獲取影片時長的函數
 const getVideoDuration = (filePath) => {
   return new Promise((resolve, reject) => {
+    // 檢查快取中是否已存在
+    if (durationCache.has(filePath)) {
+      console.log(`從快取返回影片時長: ${filePath}`);
+      return resolve(durationCache.get(filePath));
+    }
+    
     // 添加超時處理
     const timeout = setTimeout(() => {
       console.warn(`獲取影片時長超時: ${filePath}`);
       resolve(null);
-    }, 10000); // 10秒超時
+    }, DURATION_QUERY_TIMEOUT);
     
     ffmpeg.ffprobe(filePath, (err, metadata) => {
       clearTimeout(timeout); // 清除超時計時器
@@ -87,20 +103,36 @@ const getVideoDuration = (filePath) => {
         // 轉換為分:秒格式
         const minutes = Math.floor(durationSeconds / 60);
         const seconds = Math.floor(durationSeconds % 60);
-        resolve(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+        const formattedDuration = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        // 存入快取
+        durationCache.set(filePath, formattedDuration);
+        
+        resolve(formattedDuration);
       }
     });
   });
 };
 
 // 生成影片縮略圖的函數
-const generateThumbnail = async (videoPath, thumbnailPath) => {
+const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, videoId) => {
   try {
+    // 組成快取鍵
+    const cacheKey = `${cameraId}_${date}_${videoId}`;
+    
+    // 檢查快取中是否已存在
+    if (thumbnailCache.has(cacheKey)) {
+      console.log(`從快取返回縮略圖路徑: ${cacheKey}`);
+      return thumbnailCache.get(cacheKey);
+    }
+    
     // 檢查縮略圖是否已存在
     try {
       await fs.access(thumbnailPath);
-      // 如果縮略圖已存在，直接返回路徑
-      return path.basename(thumbnailPath);
+      // 如果縮略圖已存在，直接返回路徑並存入快取
+      const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
+      thumbnailCache.set(cacheKey, relativePath);
+      return relativePath;
     } catch (error) {
       // 縮略圖不存在，需要生成
       // 確保縮略圖目錄存在
@@ -111,7 +143,7 @@ const generateThumbnail = async (videoPath, thumbnailPath) => {
         const timeoutId = setTimeout(() => {
           console.warn(`縮略圖生成超時: ${videoPath}`);
           reject(new Error('縮略圖生成超時'));
-        }, 15000); // 15秒超時
+        }, THUMBNAIL_GENERATION_TIMEOUT);
         
         ffmpeg(videoPath)
           .on('error', (err) => {
@@ -121,7 +153,10 @@ const generateThumbnail = async (videoPath, thumbnailPath) => {
           })
           .on('end', () => {
             clearTimeout(timeoutId); // 清除超時
-            resolve(path.basename(thumbnailPath));
+            const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
+            // 存入快取
+            thumbnailCache.set(cacheKey, relativePath);
+            resolve(relativePath);
           })
           .screenshots({
             count: 1,
@@ -242,9 +277,229 @@ io.on('connection', (socket) => {
     console.log(`客戶端 ${socket.id} 離開房間 ${room}`);
   });
   
+  // 處理特定影片信息請求
+  socket.on('requestVideoInfo', async ({ cameraId, date, videoId }) => {
+    try {
+      console.log(`收到對影片 ${videoId} 的特殊請求`);
+      
+      // 獲取影片文件路徑
+      const videosPath = path.join(VIDEO_BASE_PATH, cameraId, date);
+      const videoFiles = await fs.readdir(videosPath);
+      
+      // 尋找匹配的影片
+      const videoFile = videoFiles.find(file => file.endsWith('.mp4') && file.replace('.mp4', '') === videoId);
+      
+      if (videoFile) {
+        const filePath = path.join(videosPath, videoFile);
+        // 獲取影片時長
+        const duration = await getVideoDuration(filePath);
+        
+        // 發送信息回客戶端
+        const room = `${cameraId}_${date}`;
+        io.to(room).emit('durationUpdated', {
+          videoId,
+          duration: duration || '未知',
+          timestamp: Date.now(),
+          isSpecialRequest: true
+        });
+        
+        console.log(`已回應特殊請求：影片 ${videoId} 時長為 ${duration || '未知'}`);
+      } else {
+        console.error(`找不到請求的影片: ${videoId}`);
+      }
+    } catch (error) {
+      console.error(`處理影片信息特殊請求失敗:`, error);
+    }
+  });
+  
   socket.on('disconnect', () => {
     console.log('WebSocket客戶端斷開連線:', socket.id);
   });
+});
+
+// 分批處理函數 - 用於處理大量影片
+const processBatch = async (videos, videosPath, cameraId, date, room, io, startIndex = 0) => {
+  const totalVideos = videos.length;
+  const endIndex = Math.min(startIndex + VIDEO_BATCH_SIZE, totalVideos);
+  
+  console.log(`處理批次：${startIndex} 到 ${endIndex-1} (共 ${totalVideos} 個影片)`);
+  
+  // 先處理第一個影片 - 優先處理
+  if (startIndex === 0 && videos.length > 0) {
+    const firstVideo = videos[0];
+    const filePath = path.join(videosPath, firstVideo.name);
+    
+    try {
+      // 獲取時長
+      const duration = await getVideoDuration(filePath);
+      
+      // 通知客戶端時長已獲取
+      io.to(room).emit('durationUpdated', { 
+        videoId: firstVideo.id, 
+        duration: duration || '未知',
+        timestamp: Date.now(),
+        index: 0,
+        total: totalVideos,
+        isFirstVideo: true
+      });
+      
+      // 獲取縮略圖
+      const thumbnailFileName = `${cameraId}_${date}_${firstVideo.id}.jpg`;
+      const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, date, thumbnailFileName);
+      
+      const thumbnail = await generateThumbnail(filePath, thumbnailPath, cameraId, date, firstVideo.id);
+      
+      if (thumbnail) {
+        io.to(room).emit('thumbnailGenerated', { 
+          videoId: firstVideo.id, 
+          thumbnail
+        });
+      }
+    } catch (error) {
+      console.error(`處理第一個影片失敗 (${firstVideo.name}):`, error);
+    }
+  }
+  
+  // 然後處理批次中的其他影片
+  for (let i = Math.max(startIndex, 1); i < endIndex; i++) {
+    const video = videos[i];
+    const filePath = path.join(videosPath, video.name);
+    
+    try {
+      // 獲取時長
+      const duration = await getVideoDuration(filePath);
+      
+      // 通知客戶端時長已獲取
+      io.to(room).emit('durationUpdated', { 
+        videoId: video.id, 
+        duration: duration || '未知',
+        timestamp: Date.now(),
+        index: i,
+        total: totalVideos
+      });
+      
+      // 獲取縮略圖
+      const thumbnailFileName = `${cameraId}_${date}_${video.id}.jpg`;
+      const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, date, thumbnailFileName);
+      
+      const thumbnail = await generateThumbnail(filePath, thumbnailPath, cameraId, date, video.id);
+      
+      if (thumbnail) {
+        io.to(room).emit('thumbnailGenerated', { 
+          videoId: video.id, 
+          thumbnail
+        });
+      }
+    } catch (error) {
+      console.error(`處理影片失敗 (${video.name}):`, error);
+      
+      io.to(room).emit('durationUpdated', { 
+        videoId: video.id, 
+        duration: '處理出錯',
+        error: true,
+        timestamp: Date.now(),
+        index: i,
+        total: totalVideos
+      });
+    }
+  }
+  
+  // 如果還有更多批次，繼續處理
+  if (endIndex < totalVideos) {
+    setTimeout(() => {
+      processBatch(videos, videosPath, cameraId, date, room, io, endIndex);
+    }, BATCH_INTERVAL);
+  } else {
+    // 發送全部處理完成的通知
+    io.to(room).emit('processingComplete', { 
+      totalVideos,
+      timestamp: Date.now()
+    });
+  }
+};
+
+// 針對單一影片時長的專用API端點
+app.get('/api/video-duration/:cameraId/:date/:videoId', async (req, res) => {
+  try {
+    const { cameraId, date, videoId } = req.params;
+    const videosPath = path.join(VIDEO_BASE_PATH, cameraId, date);
+    
+    // 檢查目錄是否存在
+    try {
+      await fs.access(videosPath);
+    } catch (error) {
+      return res.status(404).json({ error: '找不到指定的日期目錄' });
+    }
+    
+    // 查找匹配的影片檔案
+    const videoFiles = await fs.readdir(videosPath);
+    const videoFile = videoFiles.find(file => file.endsWith('.mp4') && file.replace('.mp4', '') === videoId);
+    
+    if (!videoFile) {
+      return res.status(404).json({ error: '找不到指定的影片' });
+    }
+    
+    // 獲取影片時長
+    const filePath = path.join(videosPath, videoFile);
+    const duration = await getVideoDuration(filePath);
+    
+    res.json({ 
+      videoId,
+      duration: duration || '未知',
+      timestamp: Date.now()
+    });
+  } catch (error) {
+    console.error(`獲取影片時長失敗:`, error);
+    res.status(500).json({ error: '獲取影片時長失敗' });
+  }
+});
+
+// 批量處理影片縮略圖和時長
+app.get('/api/process-videos/:cameraId/:date', async (req, res) => {
+  try {
+    const { cameraId, date } = req.params;
+    const videosPath = path.join(VIDEO_BASE_PATH, cameraId, date);
+    
+    // 檢查目錄是否存在
+    try {
+      await fs.access(videosPath);
+    } catch (error) {
+      return res.status(404).json({ error: '找不到指定的日期目錄' });
+    }
+    
+    // 獲取視頻列表
+    const videoFiles = await fs.readdir(videosPath);
+    
+    // 過濾出 .mp4 檔案並處理
+    const videos = videoFiles
+      .filter(file => file.endsWith('.mp4'))
+      .map((file) => {
+        const nameWithoutExt = file.replace('.mp4', '');
+        return {
+          id: nameWithoutExt,
+          name: file
+        };
+      });
+    
+    videos.sort((a, b) => a.name.localeCompare(b.name));
+    
+    // 構建房間名稱
+    const room = `${cameraId}_${date}`;
+    
+    // 立即返回確認信息
+    res.json({ 
+      status: 'processing',
+      totalVideos: videos.length,
+      message: `開始處理 ${videos.length} 個影片，過程將透過 WebSocket 通知`
+    });
+    
+    // 在背景開始處理
+    processBatch(videos, videosPath, cameraId, date, room, io, 0);
+    
+  } catch (error) {
+    console.error(`批量處理影片失敗:`, error);
+    res.status(500).json({ error: '批量處理影片失敗' });
+  }
 });
 
 // 獲取特定相機和日期的影片列表
@@ -286,8 +541,8 @@ app.get('/api/cameras/:cameraId/dates/:date/videos', async (req, res) => {
         };
       });
     
-    // 按時間戳排序（升序 - 從早到晚）
-    videos.sort((a, b) => a.timestamp - b.timestamp);
+    // 改為按檔名排序（以改善使用者體驗）
+    videos.sort((a, b) => a.name.localeCompare(b.name));
     
     // 先返回基本資訊，讓前端能快速顯示
     res.json(videos);
@@ -297,85 +552,9 @@ app.get('/api/cameras/:cameraId/dates/:date/videos', async (req, res) => {
       try {
         const room = `${cameraId}_${date}`;
         
-        // console.log(`開始處理 ${videos.length} 個影片的資訊，按照時間順序處理`);
+        // 使用批次處理來提高效率
+        processBatch(videos, videosPath, cameraId, date, room, io, 0);
         
-        // 確保影片按時間順序處理（從早到晚）
-        // videos 已經在之前按照 timestamp 排序過了
-        
-        // 一次處理一個影片，按順序處理
-        for (let i = 0; i < videos.length; i++) {
-          const video = videos[i];
-          // console.log(`開始處理第 ${i+1}/${videos.length} 個影片: ${video.name}`);
-          
-          const filePath = path.join(videosPath, video.name);
-          
-          // 背景生成縮略圖
-          const thumbnailFileName = `${cameraId}_${date}_${video.id}.jpg`;
-          const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, date, thumbnailFileName);
-          
-          // 確保縮略圖目錄存在
-          await fs.mkdir(path.dirname(thumbnailPath), { recursive: true }).catch(() => {});
-          
-          try {
-            // 先處理時長獲取
-            // console.log(`開始獲取影片時長: ${video.name}`);
-            const startTime = Date.now();
-            let duration = await getVideoDuration(filePath);
-            const endTime = Date.now();
-            // console.log(`影片 ${video.name} 時長獲取完成，耗時 ${endTime - startTime}ms，結果:`, duration);
-            
-            // 通知客戶端時長已獲取
-            io.to(room).emit('durationUpdated', { 
-              videoId: video.id, 
-              duration: duration || '未知',
-              timestamp: Date.now(),
-              index: i,
-              total: videos.length
-            });
-            
-            // 然後處理縮略圖
-            const thumbnail = await generateThumbnail(filePath, thumbnailPath);
-            
-            if (thumbnail) {
-              // 通知客戶端縮略圖已生成
-              io.to(room).emit('thumbnailGenerated', { 
-                videoId: video.id, 
-                thumbnail: `/thumbnails/${cameraId}/${date}/${thumbnail}`
-              });
-            }
-          } catch (error) {
-            console.error(`處理影片失敗 (${video.name}):`, error);
-            
-            // 確保即使失敗也發送通知
-            io.to(room).emit('durationUpdated', { 
-              videoId: video.id, 
-              duration: '處理出錯',
-              error: true,
-              timestamp: Date.now(),
-              index: i,
-              total: videos.length
-            });
-          }
-          
-          // 避免資源過度使用，加入短暫的延遲
-          if (i < videos.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-          
-          // 更新進度
-          const progress = Math.round(((i + 1) / videos.length) * 100);
-          // console.log(`處理進度：${progress}%`);
-          
-          // 如果是最後一個影片，確保發送 100% 進度通知
-          if (i === videos.length - 1) {
-            // console.log(`完成所有 ${videos.length} 個影片的處理，發送完成通知`);
-            // 發送全部處理完成的通知
-            io.to(room).emit('processingComplete', { 
-              totalVideos: videos.length,
-              timestamp: Date.now()
-            });
-          }
-        }
       } catch (error) {
         console.error('背景處理影片資訊失敗:', error);
       }
