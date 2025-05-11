@@ -53,7 +53,8 @@ function App() {
       <AppContainer>
         <Header />
         <MainContent>
-          <Sidebar isMobile={isMobile} />
+          {/* 只在桌面版顯示側邊欄 */}
+          {!isMobile && <Sidebar isMobile={false} />}
           <ContentArea>
             <Routes>
               <Route path="/" element={<CameraList />} />
