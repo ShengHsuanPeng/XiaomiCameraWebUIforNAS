@@ -295,8 +295,11 @@ const VideoList = () => {
       return process.env.REACT_APP_API_BASE_URL;
     }
     
-    // 使用固定的後端 IP 地址
-    return 'http://192.168.68.69:5001';
+    // 使用環境變數中的 IP 和端口，如果未設置則使用默認值
+    const apiHost = process.env.REACT_APP_API_HOST || '192.168.68.69';
+    const apiPort = process.env.REACT_APP_API_PORT || '5001';
+    
+    return `http://${apiHost}:${apiPort}`;
   }, []);
   
   // 處理縮略圖載入錯誤

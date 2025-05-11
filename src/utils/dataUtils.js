@@ -17,9 +17,11 @@ const getApiBaseUrl = () => {
     return process.env.REACT_APP_API_BASE_URL;
   }
   
-  // 使用固定的後端 IP 地址，確保無論從哪裡訪問前端都能連接到正確的後端
-  // 注意：請將此處的 IP 地址替換為您的後端伺服器實際 IP 地址
-  return 'http://192.168.68.69:5001';
+  // 使用環境變數中的 IP 和端口，如果未設置則使用默認值
+  const apiHost = process.env.REACT_APP_API_HOST || '192.168.68.69';
+  const apiPort = process.env.REACT_APP_API_PORT || '5001';
+  
+  return `http://${apiHost}:${apiPort}`;
   
   // 舊的方式（根據前端 hostname 決定）可能導致連接問題
   // return window.location.hostname === 'localhost' 
