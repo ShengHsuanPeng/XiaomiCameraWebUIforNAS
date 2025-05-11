@@ -250,6 +250,74 @@ app.get('/api/cameras/:cameraId/dates/:date/videos', async (req, res) => {
   }
 });
 
+// 獲取特定時間點的縮略圖
+app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
+  try {
+    const { cameraId, dateStr } = req.params;
+    
+    // 解析日期字符串
+    const dateInfo = parseDateString(dateStr);
+    const formattedDate = dateInfo.formatted;
+    
+    // 檢查相機和日期目錄是否存在
+    const datePath = path.join(VIDEO_BASE_PATH, cameraId, dateStr);
+    
+    try {
+      await fs.access(datePath);
+    } catch (error) {
+      return res.status(404).json({ error: '找不到指定的日期目錄' });
+    }
+    
+    // 查找該時間點的第一個影片文件
+    const videoFiles = await fs.readdir(datePath);
+    const mp4Files = videoFiles.filter(file => file.endsWith('.mp4'));
+    
+    if (mp4Files.length === 0) {
+      return res.status(404).json({ error: '在指定時間沒有找到影片' });
+    }
+    
+    // 取第一個影片生成縮略圖
+    const firstVideoFile = mp4Files[0];
+    const videoPath = path.join(datePath, firstVideoFile);
+    
+    // 生成縮略圖的文件名和路徑
+    const thumbnailFileName = `${cameraId}_${dateStr}_thumb.jpg`;
+    const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, thumbnailFileName);
+    
+    // 確保縮略圖目錄存在
+    await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
+    
+    // 嘗試獲取現有縮略圖，如果不存在則生成
+    try {
+      await fs.access(thumbnailPath);
+      // 如果縮略圖已存在，直接返回
+      res.sendFile(thumbnailPath);
+    } catch (error) {
+      // 縮略圖不存在，需要生成
+      console.log(`為相機 ${cameraId} 日期 ${dateStr} 生成縮略圖`);
+      
+      ffmpeg(videoPath)
+        .on('error', (err) => {
+          console.error('生成縮略圖失敗:', err);
+          res.status(500).json({ error: '生成縮略圖失敗' });
+        })
+        .on('end', () => {
+          // 成功生成縮略圖後返回
+          res.sendFile(thumbnailPath);
+        })
+        .screenshots({
+          count: 1,
+          folder: path.dirname(thumbnailPath),
+          filename: path.basename(thumbnailPath),
+          size: '320x180' // 16:9 縮略圖大小
+        });
+    }
+  } catch (error) {
+    console.error(`獲取縮略圖失敗:`, error);
+    res.status(500).json({ error: '獲取縮略圖失敗' });
+  }
+});
+
 // 所有其他請求返回 React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));

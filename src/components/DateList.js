@@ -146,6 +146,20 @@ const TimeThumb = styled.img`
   object-fit: cover;
 `;
 
+const TimeThumbFallback = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: ${theme.background.sidebar};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${theme.text.muted};
+  font-size: 1.2rem;
+`;
+
 const TimeInfo = styled.div`
   padding: 0.75rem;
   text-align: center;
@@ -159,24 +173,23 @@ const TimeLabel = styled.div`
 
 const PlayIcon = styled.div`
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 40px;
-  height: 40px;
+  bottom: 10px;
+  left: 10px;
+  width: 32px;
+  height: 32px;
   background-color: rgba(59, 130, 246, 0.8);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 20px;
+  font-size: 16px;
   opacity: 0.8;
   transition: opacity 0.2s, transform 0.2s;
   
   ${TimeCard}:hover & {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1.1);
+    transform: scale(1.1);
   }
 `;
 
@@ -419,6 +432,7 @@ const DateList = () => {
   const [filteredDates, setFilteredDates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [thumbnailErrors, setThumbnailErrors] = useState({});
 
   // 篩選狀態
   const [dateFilter, setDateFilter] = useState('all');
@@ -721,6 +735,30 @@ const DateList = () => {
       .sort((a, b) => b.key.localeCompare(a.key));
   };
   
+  // 處理縮略圖錯誤
+  const handleThumbnailError = (dateId) => {
+    setThumbnailErrors(prev => ({
+      ...prev,
+      [dateId]: true
+    }));
+  };
+  
+  // 獲取API基礎URL
+  const getApiBaseUrl = () => {
+    // 如果在生產環境，使用相對路徑
+    if (process.env.NODE_ENV === 'production') {
+      return '';
+    }
+    
+    // 嘗試從環境變數獲取
+    if (process.env.REACT_APP_API_BASE_URL) {
+      return process.env.REACT_APP_API_BASE_URL;
+    }
+    
+    // 使用與dataUtils.js相同的邏輯
+    return 'http://192.168.68.69:5001';
+  };
+  
   if (loading) {
     return <div>載入中...</div>;
   }
@@ -774,9 +812,20 @@ const DateList = () => {
                 <span>{dateGroup.times.length} 個時段</span>
               </DateHeader>
               <TimeGrid>
-                {dateGroup.times.map(time => (
+                {dateGroup.times.map((time, timeIndex) => (
                   <TimeCard key={time.date} to={`/camera/${cameraId}/date/${time.date}`}>
                     <TimeThumbContainer>
+                      {!thumbnailErrors[time.date] ? (
+                        <TimeThumb 
+                          src={`${getApiBaseUrl()}/api/thumbnails/${cameraId}/${time.date}`}
+                          alt={`${time.displayTime} 預覽圖`} 
+                          onError={() => handleThumbnailError(time.date)}
+                        />
+                      ) : (
+                        <TimeThumbFallback>
+                          <span>{time.displayTime}</span>
+                        </TimeThumbFallback>
+                      )}
                       <PlayIcon>▶</PlayIcon>
                     </TimeThumbContainer>
                     <TimeInfo>
