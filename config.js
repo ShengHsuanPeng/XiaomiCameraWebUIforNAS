@@ -32,8 +32,8 @@ const parseCameraNames = () => {
   
   // 如果環境變量中沒有配置，使用默認值
   if (Object.keys(cameras).length === 0) {
-    cameras['607ea43c610c'] = '客廳相機';
-    cameras['04cf8cce9d4e'] = '門口相機';
+    cameras['607ea43c610c'] = '一樓車庫';
+    cameras['04cf8cce9d4e'] = '二樓陽台';
   }
   
   return cameras;

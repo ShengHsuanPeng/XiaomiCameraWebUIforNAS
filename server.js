@@ -36,6 +36,9 @@ console.log(`影片目錄路徑: ${VIDEO_BASE_PATH}`);
 // 縮略圖路徑
 const THUMBNAIL_BASE_PATH = path.join(__dirname, 'public', 'thumbnails');
 
+// 定義錯誤圖片路徑
+const DEFAULT_ERROR_IMAGE = path.join(__dirname, 'public', 'error_thumbnail.svg');
+
 // 確保縮略圖目錄存在
 const ensureThumbnailDirExists = async () => {
   try {
@@ -147,14 +150,16 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
         // 添加超時處理，避免無限等待
         const timeoutId = setTimeout(() => {
           console.warn(`縮略圖生成超時: ${videoPath}`);
-          reject(new Error('縮略圖生成超時'));
+          // 超時時使用錯誤圖片
+          useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
         }, THUMBNAIL_GENERATION_TIMEOUT);
         
         ffmpeg(videoPath)
           .on('error', (err) => {
             clearTimeout(timeoutId); // 清除超時
             console.error('生成縮略圖失敗:', err);
-            reject(err);
+            // 失敗時使用錯誤圖片
+            useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
           })
           .on('end', () => {
             clearTimeout(timeoutId); // 清除超時
@@ -175,6 +180,26 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
   } catch (error) {
     console.error('處理縮略圖時發生錯誤:', error);
     return null;
+  }
+};
+
+// 當 ffmpeg 失敗時使用預設錯誤圖片的函數
+const useErrorImage = async (thumbnailPath, cacheKey, cameraId, date) => {
+  try {
+    // 檢查預設錯誤圖片是否存在
+    await fs.access(DEFAULT_ERROR_IMAGE);
+    
+    // 複製預設錯誤圖片到目標位置
+    await fs.copyFile(DEFAULT_ERROR_IMAGE, thumbnailPath);
+    
+    // 返回相對路徑
+    const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
+    thumbnailCache.set(cacheKey, relativePath);
+    return relativePath;
+  } catch (error) {
+    console.error('複製錯誤圖片失敗:', error);
+    // 如果無法複製錯誤圖片，返回固定的錯誤圖片路徑
+    return '/error_thumbnail.jpg';
   }
 };
 
@@ -616,27 +641,66 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
       // 縮略圖不存在，需要生成
       // console.log(`為相機 ${cameraId} 日期 ${dateStr} 生成縮略圖`);
       
-      ffmpeg(videoPath)
-        .on('error', (err) => {
-          console.error('生成縮略圖失敗:', err);
-          res.status(500).json({ error: '生成縮略圖失敗' });
-        })
-        .on('end', () => {
-          // 成功生成縮略圖後返回
+      // 添加超時處理
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('縮略圖生成超時'));
+        }, THUMBNAIL_GENERATION_TIMEOUT);
+      });
+      
+      // 縮略圖生成處理
+      const ffmpegPromise = new Promise((resolve, reject) => {
+        ffmpeg(videoPath)
+          .on('error', (err) => {
+            console.error('生成縮略圖失敗:', err);
+            reject(err);
+          })
+          .on('end', () => {
+            resolve(thumbnailPath);
+          })
+          .screenshots({
+            count: 1,
+            folder: path.dirname(thumbnailPath),
+            filename: path.basename(thumbnailPath),
+            size: '320x180' // 16:9 縮略圖大小
+          });
+      });
+      
+      // 使用 Promise.race 來處理可能的超時情況
+      try {
+        const result = await Promise.race([ffmpegPromise, timeoutPromise]);
+        res.sendFile(result);
+      } catch (err) {
+        console.error('縮略圖生成失敗或超時:', err);
+        // 使用預設錯誤圖片
+        try {
+          await fs.copyFile(DEFAULT_ERROR_IMAGE, thumbnailPath);
           res.sendFile(thumbnailPath);
-        })
-        .screenshots({
-          count: 1,
-          folder: path.dirname(thumbnailPath),
-          filename: path.basename(thumbnailPath),
-          size: '320x180' // 16:9 縮略圖大小
-        });
+        } catch (copyErr) {
+          // 如果連複製也失敗，直接返回錯誤圖片
+          if (await fileExists(DEFAULT_ERROR_IMAGE)) {
+            res.sendFile(DEFAULT_ERROR_IMAGE);
+          } else {
+            res.status(500).json({ error: '無法生成縮略圖' });
+          }
+        }
+      }
     }
   } catch (error) {
     console.error(`獲取縮略圖失敗:`, error);
     res.status(500).json({ error: '獲取縮略圖失敗' });
   }
 });
+
+// 檢查文件是否存在的輔助函數
+const fileExists = async (filePath) => {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 // 所有其他請求返回 React app
 app.get('*', (req, res) => {
