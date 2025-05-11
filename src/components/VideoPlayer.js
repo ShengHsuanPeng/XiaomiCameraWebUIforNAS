@@ -221,7 +221,7 @@ const VideoPlayer = () => {
       
       <PlayerContainer>
         {showVideo ? (
-          <VideoElement controls autoPlay>
+          <VideoElement controls autoPlay crossOrigin="anonymous">
             <source src={videoPath} type="video/mp4" />
             您的瀏覽器不支援影片播放。
           </VideoElement>

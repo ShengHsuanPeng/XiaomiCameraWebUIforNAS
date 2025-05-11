@@ -66,11 +66,21 @@ app.use(cors({
       callback(new Error('不允許的來源'));
     }
   },
-  credentials: true
+  credentials: true,
+  exposedHeaders: ['Content-Length', 'Content-Type', 'Accept-Ranges', 'Content-Range']
 }));
 
+// 為視頻文件路徑添加額外的 CORS 頭部
+app.use('/xiaomi_camera_videos', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'credentialless');
+  next();
+}, express.static(VIDEO_BASE_PATH));
+
 // 靜態檔案服務
-app.use('/xiaomi_camera_videos', express.static(VIDEO_BASE_PATH));
 app.use(express.static(path.join(__dirname, 'build')));
 app.use('/thumbnails', express.static(THUMBNAIL_BASE_PATH));
 
