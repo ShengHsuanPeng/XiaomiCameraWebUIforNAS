@@ -693,7 +693,7 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
         }, THUMBNAIL_GENERATION_TIMEOUT);
       });
       
-      console.log(`開始生成縮略圖: ${videoPath}`);
+      console.log(`開始生成縮略圖2: ${videoPath}`);
       // 縮略圖生成處理
       const ffmpegPromise = new Promise((resolve, reject) => {
         ffmpeg(videoPath)
