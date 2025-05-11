@@ -38,6 +38,9 @@ REACT_APP_API_PORT=5001
 
 # 基礎路徑設定
 REACT_APP_BASE_PATH=/xiaomi_camera_videos
+
+# 相機名稱映射
+CAMERA_NAMES=607ea43c610c:客廳相機,04cf8cce9d4e:門口相機
 `;
     
     // 寫入文件

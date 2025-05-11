@@ -15,6 +15,36 @@ const getLocalIpAddress = () => {
   return '0.0.0.0'; // 如果找不到合適的 IP，使用 0.0.0.0 (所有網路介面)
 };
 
+// 解析環境變量中的相機映射
+// 格式: CAMERA_NAMES="cameraId1:名稱1,cameraId2:名稱2"
+const parseCameraNames = () => {
+  const cameraEnv = process.env.CAMERA_NAMES || '';
+  const cameras = {};
+  
+  if (cameraEnv) {
+    cameraEnv.split(',').forEach(pair => {
+      const [id, name] = pair.split(':');
+      if (id && name) {
+        cameras[id.trim()] = name.trim();
+      }
+    });
+  }
+  
+  // 如果環境變量中沒有配置，使用默認值
+  if (Object.keys(cameras).length === 0) {
+    cameras['607ea43c610c'] = '客廳相機';
+    cameras['04cf8cce9d4e'] = '門口相機';
+  }
+  
+  return cameras;
+};
+
+// 獲取相機名稱的函數，如果映射失敗則返回ID
+const getCameraName = (cameraId) => {
+  const cameras = parseCameraNames();
+  return cameras[cameraId] || cameraId;
+};
+
 module.exports = {
   // 伺服器設定
   server: {
@@ -30,12 +60,10 @@ module.exports = {
   },
   
   // 相機 ID 到名稱的映射
-  cameras: {
-    // 格式: 'cameraId': '相機名稱'
-    '607ea43c610c': '客廳相機',
-    '04cf8cce9d4e': '門口相機',
-    // 可以根據需要添加更多相機
-  },
+  cameras: parseCameraNames(),
+  
+  // 獲取相機名稱的輔助函數
+  getCameraName,
   
   // 日期格式設定
   dateFormat: {
