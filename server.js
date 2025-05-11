@@ -1,3 +1,6 @@
+// 載入環境變數
+require('dotenv').config();
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs').promises;
@@ -26,9 +29,11 @@ const io = new Server(server, {
   }
 });
 
-// 影片檔案的基礎路徑
+// 視頻文件路徑 - 從配置文件中獲取
 const VIDEO_BASE_PATH = config.paths.videos;
-// 縮略圖的基礎路徑
+console.log(`影片目錄路徑: ${VIDEO_BASE_PATH}`);
+
+// 縮略圖路徑
 const THUMBNAIL_BASE_PATH = path.join(__dirname, 'public', 'thumbnails');
 
 // 確保縮略圖目錄存在
