@@ -226,6 +226,34 @@ const FilterSelect = styled.select`
   }
 `;
 
+// 分頁控制器樣式
+const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 2rem 0;
+  gap: 0.5rem;
+`;
+
+const PageButton = styled.button`
+  background-color: ${props => props.isActive ? theme.primary.main : theme.background.paper};
+  color: ${props => props.isActive ? theme.primary.contrastText : theme.text.primary};
+  border: 1px solid ${props => props.isActive ? theme.primary.main : theme.border.light};
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  cursor: ${props => props.disabled ? 'default' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.5 : 1};
+  
+  &:hover {
+    background-color: ${props => props.disabled ? null : props.isActive ? theme.primary.dark : theme.background.sidebar};
+  }
+`;
+
+const PageInfo = styled.div`
+  color: ${theme.text.secondary};
+  padding: 0.5rem;
+`;
+
 const CalendarButton = styled.button`
   background-color: ${theme.background.paper};
   border: 1px solid ${theme.border.light};
@@ -441,6 +469,10 @@ const DateList = () => {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [availableDates, setAvailableDates] = useState({});
+  
+  // 分頁狀態
+  const [currentPage, setCurrentPage] = useState(1);
+  const daysPerPage = 7;
   
   useEffect(() => {
     const handleResize = () => {
@@ -766,6 +798,25 @@ const DateList = () => {
     return <div>載入中...</div>;
   }
   
+  // 計算分組後的日期數據
+  const groupedDates = groupDatesByDay(filteredDates);
+  const totalPages = Math.ceil(groupedDates.length / daysPerPage);
+  
+  // 獲取當前頁的日期組
+  const currentDates = groupedDates.slice(
+    (currentPage - 1) * daysPerPage,
+    currentPage * daysPerPage
+  );
+  
+  // 處理頁面變更
+  const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+    
+    // 滾動到頁面頂部
+    window.scrollTo(0, 0);
+  };
+  
   return (
     <div>
       <BackLink to="/">← 返回相機列表</BackLink>
@@ -807,8 +858,8 @@ const DateList = () => {
           
           <OrderInfo>按時間順序顯示（從早到晚）| 共 {filteredDates.length} 個時段</OrderInfo>
           
-          {/* 日期分組顯示 */}
-          {groupDatesByDay(filteredDates).map(dateGroup => (
+          {/* 日期分組顯示 - 只顯示當前頁的日期組 */}
+          {currentDates.map(dateGroup => (
             <DateSection key={dateGroup.key}>
               <DateHeader>
                 <span>{dateGroup.displayDate}</span>
@@ -839,6 +890,41 @@ const DateList = () => {
               </TimeGrid>
             </DateSection>
           ))}
+          
+          {/* 分頁控制器 */}
+          {totalPages > 1 && (
+            <PaginationContainer>
+              <PageButton 
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage === 1}
+              >
+                &laquo;
+              </PageButton>
+              <PageButton 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                &lt;
+              </PageButton>
+              
+              <PageInfo>
+                {currentPage} / {totalPages} 頁
+              </PageInfo>
+              
+              <PageButton 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                &gt;
+              </PageButton>
+              <PageButton 
+                onClick={() => handlePageChange(totalPages)}
+                disabled={currentPage === totalPages}
+              >
+                &raquo;
+              </PageButton>
+            </PaginationContainer>
+          )}
           
           {/* 行事曆彈窗 */}
           {showCalendar && (
