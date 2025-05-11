@@ -233,6 +233,7 @@ const VideoPlayer = () => {
               onError={(e) => {
                 e.target.onerror = null;
                 e.target.src = "/placeholder-thumbnail.svg";
+                console.warn(`影片 ${videoId} 縮略圖載入失敗，使用佔位圖`);
               }}
             />
             <PlayOverlay onClick={handlePlayClick}>

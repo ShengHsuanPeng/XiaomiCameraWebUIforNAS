@@ -173,13 +173,14 @@ const CameraList = () => {
     loadCameras();
   }, []);
   
-  // 處理縮略圖載入錯誤
+  // 處理相機縮略圖載入錯誤
   const handleThumbnailError = (cameraId) => {
-    console.error(`相機 ${cameraId} 的縮略圖載入失敗`);
+    console.warn(`相機 ${cameraId} 的縮略圖載入失敗，使用佔位圖`);
     setThumbnailErrors(prev => ({
       ...prev,
       [cameraId]: true
     }));
+    // 使用佔位圖，不再重試加載
   };
   
   // 獲取相機的最近日期

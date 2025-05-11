@@ -769,10 +769,12 @@ const DateList = () => {
   
   // 處理縮略圖錯誤
   const handleThumbnailError = (dateId) => {
+    console.warn(`日期 ${dateId} 縮略圖載入失敗，使用占位圖`);
     setThumbnailErrors(prev => ({
       ...prev,
       [dateId]: true
     }));
+    // 不再重試加載，直接使用備用顯示
   };
   
   // 獲取API基礎URL

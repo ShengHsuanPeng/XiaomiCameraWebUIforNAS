@@ -308,13 +308,7 @@ const VideoList = () => {
       ...prev,
       [videoId]: true
     }));
-    // 錯誤後自動重試一次
-    setTimeout(() => {
-      setThumbnailErrors(prev => ({
-        ...prev,
-        [videoId]: false
-      }));
-    }, 3000); // 3秒後重試
+    // 移除自動重試邏輯，避免頁面瘋狂重整
   };
   
   // 處理縮略圖載入狀態
