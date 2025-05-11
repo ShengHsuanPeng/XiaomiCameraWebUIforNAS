@@ -55,7 +55,7 @@ module.exports = {
   
   // 影片檔案的基礎路徑
   paths: {
-    videos: process.env.VIDEO_BASE_PATH || path.join(__dirname, 'xiaomi_camera_videos'),
+    videos: process.env.REACT_APP_BASE_PATH || path.join(__dirname, 'xiaomi_camera_videos'),
     // 如果需要指定其他路徑，可以在這裡添加
   },
   
