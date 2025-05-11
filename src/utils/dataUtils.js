@@ -2,8 +2,8 @@
  * 從後端 API 獲取數據的工具函數
  */
 
-// 基於文件路徑獲取數據
-const BASE_PATH = '/xiaomi_camera_videos';
+// 基於文件路徑獲取數據 - 使用環境變數
+const BASE_PATH = process.env.REACT_APP_BASE_PATH || '/xiaomi_camera_videos';
 
 // 獲取 API 基礎 URL
 const getApiBaseUrl = () => {
