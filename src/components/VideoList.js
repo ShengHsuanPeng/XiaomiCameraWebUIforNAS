@@ -282,6 +282,36 @@ const VideoList = () => {
   const completionTimeoutRef = useRef(null);
   const videoListRef = useRef([]);  // 用來追踪當前載入的影片列表
   
+  // 從localStorage加載縮略圖錯誤狀態
+  useEffect(() => {
+    if (!cameraId || !date) return;
+    
+    try {
+      const key = `thumbnailErrors_${cameraId}_${date}`;
+      const savedErrors = localStorage.getItem(key);
+      
+      if (savedErrors) {
+        const parsedErrors = JSON.parse(savedErrors);
+        console.log(`從本地存儲加載了 ${Object.keys(parsedErrors).length} 個縮略圖錯誤記錄`);
+        setThumbnailErrors(parsedErrors);
+      }
+    } catch (error) {
+      console.error('讀取縮略圖錯誤緩存失敗:', error);
+    }
+  }, [cameraId, date]);
+  
+  // 保存縮略圖錯誤狀態到localStorage
+  const saveThumbnailErrors = useCallback((errors) => {
+    if (!cameraId || !date) return;
+    
+    try {
+      const key = `thumbnailErrors_${cameraId}_${date}`;
+      localStorage.setItem(key, JSON.stringify(errors));
+    } catch (error) {
+      console.error('保存縮略圖錯誤緩存失敗:', error);
+    }
+  }, [cameraId, date]);
+  
   // 獲取API基礎URL
   const getApiBaseUrl = useCallback(() => {
     // 如果在生產環境，使用相對路徑
@@ -304,10 +334,16 @@ const VideoList = () => {
   // 處理縮略圖載入錯誤
   const handleThumbnailError = (videoId) => {
     console.warn(`縮略圖 ${videoId} 載入失敗，使用占位圖`);
-    setThumbnailErrors(prev => ({
-      ...prev,
+    // 如果已經標記為錯誤，不再重複處理
+    if (thumbnailErrors[videoId]) return;
+    
+    const updatedErrors = {
+      ...thumbnailErrors,
       [videoId]: true
-    }));
+    };
+    
+    setThumbnailErrors(updatedErrors);
+    saveThumbnailErrors(updatedErrors);
     // 移除自動重試邏輯，避免頁面瘋狂重整
   };
   
@@ -346,16 +382,25 @@ const VideoList = () => {
   // 更新特定影片的縮略圖
   const updateVideoThumbnail = useCallback((videoId, thumbnail) => {
     console.log(`更新影片 ${videoId} 的縮略圖`);
+    
+    // 如果已經標記為錯誤，不再嘗試更新
+    if (thumbnailErrors[videoId]) {
+      console.log(`影片 ${videoId} 的縮略圖已標記為錯誤，跳過更新`);
+      return;
+    }
+    
     setVideos(prevVideos => prevVideos.map(video => 
       video.id === videoId ? { ...video, thumbnail } : video
     ));
     
     // 縮略圖生成成功後，清除錯誤狀態
-    setThumbnailErrors(prev => ({
-      ...prev,
+    const updatedErrors = {
+      ...thumbnailErrors,
       [videoId]: false
-    }));
-  }, []);
+    };
+    setThumbnailErrors(updatedErrors);
+    saveThumbnailErrors(updatedErrors);
+  }, [thumbnailErrors, saveThumbnailErrors]);
   
   // 使用預載入技術預先載入下一批縮略圖
   const preloadNextThumbnails = useCallback((currentVideoIndex, count = 3) => {
@@ -368,6 +413,12 @@ const VideoList = () => {
       const video = videoListRef.current[i];
       if (!video) continue;
       
+      // 跳過已知失敗的縮略圖
+      if (thumbnailErrors[video.id]) {
+        console.log(`跳過已知失敗的縮略圖: ${video.id}`);
+        continue;
+      }
+      
       const img = new Image();
       const thumbnailUrl = video.thumbnail 
         ? `${getApiBaseUrl()}${video.thumbnail}` 
@@ -376,7 +427,7 @@ const VideoList = () => {
       img.src = thumbnailUrl;
       console.log(`預載入縮略圖: ${video.id}`);
     }
-  }, [cameraId, date, getApiBaseUrl]);
+  }, [cameraId, date, getApiBaseUrl, thumbnailErrors]);
   
   // 設置 WebSocket 連接
   useEffect(() => {
@@ -437,6 +488,13 @@ const VideoList = () => {
       socket.on('thumbnailGenerated', data => {
         if (data.videoId && data.thumbnail) {
           console.log(`收到影片 ${data.videoId} 的縮略圖更新`);
+          
+          // 檢查這個影片的縮略圖是否已經標記為錯誤
+          if (thumbnailErrors[data.videoId]) {
+            console.log(`影片 ${data.videoId} 的縮略圖已標記為錯誤，忽略更新通知`);
+            return;
+          }
+          
           updateVideoThumbnail(data.videoId, data.thumbnail);
           
           // 找到當前影片在列表中的位置，預載入接下來的縮略圖
@@ -598,7 +656,7 @@ const VideoList = () => {
         socketInstance.disconnect();
       }
     };
-  }, [cameraId, date, getApiBaseUrl, updateVideoDuration, updateVideoThumbnail, preloadNextThumbnails]);
+  }, [cameraId, date, getApiBaseUrl, updateVideoDuration, updateVideoThumbnail, preloadNextThumbnails, thumbnailErrors]);
   
   // 當component卸載時，或者cameraId/date變更時，清理資源
   useEffect(() => {
@@ -766,13 +824,18 @@ const VideoList = () => {
   
   // 縮略圖載入優化函數 - 延遲載入不在可視區域的縮略圖
   const getThumbnailUrl = (video) => {
+    // 如果已經知道這個縮略圖載入會失敗，直接返回占位圖
     if (thumbnailErrors[video.id]) {
       return "/placeholder-thumbnail.svg";
     }
     
-    return video.thumbnail 
-      ? `${getApiBaseUrl()}${video.thumbnail}` 
-      : `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${video.id}.jpg`;
+    // 如果影片已有縮略圖路徑，使用該路徑
+    if (video.thumbnail) {
+      return `${getApiBaseUrl()}${video.thumbnail}`;
+    }
+    
+    // 否則使用標準路徑
+    return `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${video.id}.jpg`;
   };
   
   return (
@@ -808,7 +871,7 @@ const VideoList = () => {
                 <VideoCard key={video.id}>
                   <Link to={`/camera/${cameraId}/date/${date}/video/${video.id}`}>
                     <ThumbnailContainer>
-                      {thumbnailLoading[video.id] && (
+                      {thumbnailLoading[video.id] && !thumbnailErrors[video.id] && (
                         <ThumbnailPlaceholder>載入中...</ThumbnailPlaceholder>
                       )}
                       {!thumbnailErrors[video.id] ? (
@@ -860,7 +923,7 @@ const VideoList = () => {
                     <ThumbnailCell>
                       <Link to={`/camera/${cameraId}/date/${date}/video/${video.id}`}>
                         <TableThumbnail>
-                          {thumbnailLoading[video.id] && (
+                          {thumbnailLoading[video.id] && !thumbnailErrors[video.id] && (
                             <ThumbnailPlaceholder>載入中...</ThumbnailPlaceholder>
                           )}
                           {!thumbnailErrors[video.id] ? (

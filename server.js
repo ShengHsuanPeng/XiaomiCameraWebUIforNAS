@@ -122,6 +122,7 @@ const getVideoDuration = (filePath) => {
       resolve(null);
     }, DURATION_QUERY_TIMEOUT);
     
+    console.log(`開始獲取影片時長: ${filePath}`);
     ffmpeg.ffprobe(filePath, (err, metadata) => {
       clearTimeout(timeout); // 清除超時計時器
       
@@ -184,6 +185,7 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
           useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
         }, THUMBNAIL_GENERATION_TIMEOUT);
         
+        console.log(`開始生成縮略圖: ${videoPath}`);
         ffmpeg(videoPath)
           .on('error', (err) => {
             clearTimeout(timeoutId); // 清除超時
@@ -215,6 +217,7 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
   }
 };
 
+console.log('生成縮略圖函數已定義');
 // 當 ffmpeg 失敗時使用預設錯誤圖片的函數
 const useErrorImage = async (thumbnailPath, cacheKey, cameraId, date) => {
   try {
@@ -690,6 +693,7 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
         }, THUMBNAIL_GENERATION_TIMEOUT);
       });
       
+      console.log(`開始生成縮略圖: ${videoPath}`);
       // 縮略圖生成處理
       const ffmpegPromise = new Promise((resolve, reject) => {
         ffmpeg(videoPath)
