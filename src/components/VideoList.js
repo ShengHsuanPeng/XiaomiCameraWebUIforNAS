@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { getDateVideos, formatTimestamp, parseDateString, getVideoDuration, processVideos, getApiBaseUrl } from '../utils/dataUtils';
+import { getDateVideos, formatTimestamp, parseDateString, getVideoDuration, processVideos, getApiBaseUrl, clearDurationCache } from '../utils/dataUtils';
 import theme from '../utils/theme';
 import { io } from 'socket.io-client';
 
@@ -502,9 +502,19 @@ const VideoList = () => {
         
         // 更新處理進度（基於伺服器發送的索引）
         if (data.index !== undefined && data.total) {
-          const progress = Math.min(100, Math.round(((data.index + 1) / data.total) * 100));
-          setLoadingProgress(progress);
-          console.log(`更新進度：${progress}% (${data.index + 1}/${data.total})`);
+          const newProgress = Math.min(100, Math.round(((data.index + 1) / data.total) * 100));
+          
+          // 只有當新進度大於舊進度時才更新，避免進度條向後跳動
+          setLoadingProgress(prevProgress => {
+            if (newProgress > prevProgress) {
+              console.log(`更新進度：${newProgress}% (${data.index + 1}/${data.total})`);
+              return newProgress;
+            } else {
+              // 如果接收到的進度值小於當前進度，則忽略
+              console.log(`忽略較小的進度值: ${newProgress}%，保持當前進度: ${prevProgress}%`);
+              return prevProgress;
+            }
+          });
         }
         
         if (data.duration) {
@@ -594,6 +604,14 @@ const VideoList = () => {
     };
   }, [cameraId, date, getApiBaseUrl, updateVideoDuration, updateVideoThumbnail, preloadNextThumbnails]);
   
+  // 當component卸載時，或者cameraId/date變更時，清理資源
+  useEffect(() => {
+    return () => {
+      console.log('離開頁面，清除影片時長快取');
+      clearDurationCache(cameraId, date);
+    };
+  }, [cameraId, date]);
+  
   // 載入影片列表
   useEffect(() => {
     const loadVideos = async () => {
@@ -610,7 +628,7 @@ const VideoList = () => {
         videoListRef.current = videoList;
         
         // 套用全局變量中已有的時長資料（如果有）
-        const updatedVideoList = videoList.map(video => {
+        const updatedVideoList = await Promise.all(videoList.map(async (video) => {
           // 檢查是否有緩存的時長資料
           if (globalVideoDurations[video.id]) {
             return {
@@ -627,10 +645,30 @@ const VideoList = () => {
             };
           }
           
+          // 透過緩存API獲取時長（如果有緩存會直接返回）
+          try {
+            const duration = await getVideoDuration(cameraId, date, video.id);
+            if (duration && duration !== '未知') {
+              // 更新全局緩存
+              globalVideoDurations[video.id] = duration;
+              return {
+                ...video,
+                duration
+              };
+            }
+          } catch (err) {
+            console.error(`無法獲取影片 ${video.id} 的時長`, err);
+          }
+          
           return video;
-        });
+        }));
         
         setVideos(updatedVideoList);
+        
+        // 檢查是否所有影片都已有有效的時長數據
+        const allVideosHaveDuration = updatedVideoList.every(video => 
+          video.duration && video.duration !== '載入中' && video.duration !== '未知'
+        );
         
         // 預載入前幾個縮略圖
         for (let i = 0; i < Math.min(5, videoList.length); i++) {
@@ -640,6 +678,13 @@ const VideoList = () => {
         // 保存第一個影片的ID
         if (videoList.length > 0) {
           firstVideoInfo.id = videoList[0].id;
+          
+          // 如果所有影片都已有時長數據，則直接設置完成狀態並跳過後續處理
+          if (allVideosHaveDuration) {
+            console.log('所有影片時長已從緩存獲取，跳過處理流程');
+            setLoadingProgress(101); // 設為101表示已完成且應該隱藏
+            return; // 跳過後續處理
+          }
           
           // 立即發送請求獲取第一個影片資訊
           setTimeout(() => {

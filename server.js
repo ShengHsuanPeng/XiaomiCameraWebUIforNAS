@@ -81,7 +81,7 @@ const getVideoDuration = (filePath) => {
   return new Promise((resolve, reject) => {
     // 檢查快取中是否已存在
     if (durationCache.has(filePath)) {
-      console.log(`從快取返回影片時長: ${filePath}`);
+      // console.log(`從快取返回影片時長: ${filePath}`);
       return resolve(durationCache.get(filePath));
     }
     
@@ -122,7 +122,7 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
     
     // 檢查快取中是否已存在
     if (thumbnailCache.has(cacheKey)) {
-      console.log(`從快取返回縮略圖路徑: ${cacheKey}`);
+      // console.log(`從快取返回縮略圖路徑: ${cacheKey}`);
       return thumbnailCache.get(cacheKey);
     }
     
@@ -322,7 +322,7 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
   const totalVideos = videos.length;
   const endIndex = Math.min(startIndex + VIDEO_BATCH_SIZE, totalVideos);
   
-  console.log(`處理批次：${startIndex} 到 ${endIndex-1} (共 ${totalVideos} 個影片)`);
+  // console.log(`處理批次：${startIndex} 到 ${endIndex-1} (共 ${totalVideos} 個影片)`);
   
   // 先處理第一個影片 - 優先處理
   if (startIndex === 0 && videos.length > 0) {

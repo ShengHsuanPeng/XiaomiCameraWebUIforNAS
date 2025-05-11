@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { getDateVideos, getVideoPath, formatTimestamp } from '../utils/dataUtils';
+import { getDateVideos, getVideoPath, formatTimestamp, getVideoDuration, getApiBaseUrl } from '../utils/dataUtils';
 import theme from '../utils/theme';
 
 const PageTitle = styled.h1`
@@ -159,7 +159,23 @@ const VideoPlayer = () => {
     const loadVideo = async () => {
       try {
         const videoList = await getDateVideos(cameraId, date);
-        const foundVideo = videoList.find(v => v.id === videoId);
+        let foundVideo = videoList.find(v => v.id === videoId);
+        
+        // 如果找到影片但時長是「載入中」或「未知」，嘗試使用緩存獲取
+        if (foundVideo && (!foundVideo.duration || foundVideo.duration === '載入中' || foundVideo.duration === '未知')) {
+          try {
+            const duration = await getVideoDuration(cameraId, date, videoId);
+            if (duration && duration !== '未知') {
+              foundVideo = {
+                ...foundVideo,
+                duration
+              };
+            }
+          } catch (err) {
+            console.error('獲取影片時長失敗:', err);
+          }
+        }
+        
         setVideo(foundVideo || null);
       } catch (error) {
         console.error('載入影片資訊失敗:', error);
@@ -192,6 +208,10 @@ const VideoPlayer = () => {
   }
   
   const videoPath = getVideoPath(cameraId, date, video.name);
+  // 獲取縮略圖的完整路徑
+  const thumbnailUrl = video.thumbnail 
+    ? `${getApiBaseUrl()}${video.thumbnail}` 
+    : `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${videoId}.jpg`;
   
   return (
     <div>
@@ -207,11 +227,14 @@ const VideoPlayer = () => {
           </VideoElement>
         ) : (
           <ThumbnailContainer>
-            {video.thumbnail ? (
-              <ThumbnailImage src={video.thumbnail} alt={`${video.name} 縮略圖`} />
-            ) : (
-              <ThumbnailImage src="/placeholder-thumbnail.svg" alt="無縮略圖" />
-            )}
+            <ThumbnailImage 
+              src={thumbnailUrl} 
+              alt={`${video.name} 縮略圖`}
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = "/placeholder-thumbnail.svg";
+              }}
+            />
             <PlayOverlay onClick={handlePlayClick}>
               <PlayButton>▶</PlayButton>
             </PlayOverlay>

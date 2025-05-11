@@ -29,6 +29,9 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+// 前端快取，用於緩存影片時長資訊
+const durationCache = new Map();
+
 // 日期格式設定 (與後端 config.js 保持一致)
 const dateFormat = {
   yearStart: 0,
@@ -88,12 +91,27 @@ export const getDateVideos = async (cameraId, date) => {
 
 // 獲取特定影片的時長
 export const getVideoDuration = async (cameraId, date, videoId) => {
+  // 建立快取鍵
+  const cacheKey = `${cameraId}_${date}_${videoId}`;
+  
+  // 檢查是否已經在快取中
+  if (durationCache.has(cacheKey)) {
+    console.log(`從前端快取中獲取影片時長: ${cacheKey}`);
+    return durationCache.get(cacheKey);
+  }
+  
   try {
     const response = await fetch(`${API_BASE_URL}/api/video-duration/${cameraId}/${date}/${videoId}`);
     if (!response.ok) {
       throw new Error(`HTTP 錯誤: ${response.status}`);
     }
     const data = await response.json();
+    
+    // 存入快取
+    if (data.duration) {
+      durationCache.set(cacheKey, data.duration);
+    }
+    
     return data.duration;
   } catch (error) {
     console.error(`獲取影片 ${videoId} 的時長失敗:`, error);
@@ -147,6 +165,44 @@ export const parseDateString = (dateStr) => {
     hour,
     formatted: `${year}-${month}-${day} ${hour}:00`
   };
+};
+
+// 清除時長快取，用於需要強制更新的場景
+export const clearDurationCache = (cameraId = null, date = null) => {
+  if (!cameraId && !date) {
+    // 清除所有快取
+    durationCache.clear();
+    console.log('已清除所有影片時長快取');
+    return;
+  }
+  
+  if (cameraId && !date) {
+    // 清除特定相機的所有快取
+    const keysToDelete = [];
+    durationCache.forEach((value, key) => {
+      if (key.startsWith(`${cameraId}_`)) {
+        keysToDelete.push(key);
+      }
+    });
+    
+    keysToDelete.forEach(key => durationCache.delete(key));
+    console.log(`已清除相機 ${cameraId} 的所有影片時長快取`);
+    return;
+  }
+  
+  if (cameraId && date) {
+    // 清除特定相機和日期的所有快取
+    const keysToDelete = [];
+    durationCache.forEach((value, key) => {
+      if (key.startsWith(`${cameraId}_${date}_`)) {
+        keysToDelete.push(key);
+      }
+    });
+    
+    keysToDelete.forEach(key => durationCache.delete(key));
+    console.log(`已清除相機 ${cameraId} 日期 ${date} 的所有影片時長快取`);
+    return;
+  }
 };
 
 // 導出 API 基礎 URL，方便其他模組使用
