@@ -137,11 +137,19 @@ export const processVideos = async (cameraId, date) => {
 
 // 獲取影片路徑
 export const getVideoPath = (cameraId, date, videoName) => {
-  // 確保 API_BASE_URL 末尾不包含斜線，而 BASE_PATH 開頭包含斜線
+  // 確保 API_BASE_URL 末尾不包含斜線
   const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-  const basePath = BASE_PATH.startsWith('/') ? BASE_PATH : `/${BASE_PATH}`;
   
-  return `${baseUrl}${basePath}/${cameraId}/${date}/${videoName}`;
+  // BASE_PATH 可能包含本地系統絕對路徑，需要提取有效的 API 路徑
+  // 例如: "/media/ext_hdd/share/xiaomi_camera_videos" 應變為 "/xiaomi_camera_videos"
+  let apiPath = "/xiaomi_camera_videos";
+  
+  // 如果 BASE_PATH 包含 xiaomi_camera_videos，則使用它
+  if (BASE_PATH.includes("xiaomi_camera_videos")) {
+    apiPath = "/xiaomi_camera_videos";
+  }
+  
+  return `${baseUrl}${apiPath}/${cameraId}/${date}/${videoName}`;
 };
 
 // 格式化時間戳記為可讀時間

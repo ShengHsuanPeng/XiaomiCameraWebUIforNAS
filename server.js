@@ -77,8 +77,20 @@ app.use('/xiaomi_camera_videos', (req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   res.header('Cross-Origin-Embedder-Policy', 'credentialless');
+  
+  // 確保 MP4 文件有正確的 MIME 類型
+  if (req.path.endsWith('.mp4')) {
+    res.header('Content-Type', 'video/mp4');
+  }
+  
   next();
-}, express.static(VIDEO_BASE_PATH));
+}, express.static(VIDEO_BASE_PATH, {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.mp4')) {
+      res.set('Content-Type', 'video/mp4');
+    }
+  }
+}));
 
 // 靜態檔案服務
 app.use(express.static(path.join(__dirname, 'build')));
