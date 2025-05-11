@@ -16,13 +16,13 @@ const getLocalIpAddress = () => {
   return '192.168.68.69'; // 如果找不到合適的 IP，使用默認值
 };
 
-// 檢查並創建.env.development文件
+// 檢查並創建.env文件
 const setupEnvFile = () => {
-  const envDevPath = path.join(__dirname, '..', '.env.development');
+  const envDevPath = path.join(__dirname, '..', '.env');
   
   // 檢查文件是否存在
   if (!fs.existsSync(envDevPath)) {
-    console.log('.env.development 不存在，正在創建...');
+    console.log('.env 不存在，正在創建...');
     
     // 獲取本機IP地址
     const localIp = getLocalIpAddress();
@@ -42,9 +42,9 @@ REACT_APP_BASE_PATH=/xiaomi_camera_videos
     
     // 寫入文件
     fs.writeFileSync(envDevPath, envContent);
-    console.log(`✅ 已創建 .env.development 並設置 API Host 為 ${localIp}`);
+    console.log(`✅ 已創建 .env 並設置 API Host 為 ${localIp}`);
   } else {
-    console.log('.env.development 已存在，跳過創建步驟');
+    console.log('.env 已存在，跳過創建步驟');
   }
 };
 

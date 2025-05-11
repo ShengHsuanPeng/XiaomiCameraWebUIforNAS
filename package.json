@@ -22,9 +22,8 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "preserver": "node scripts/setup-env-server.js",
     "server": "node server.js",
-    "dev": "node scripts/setup-env.js && node scripts/setup-env-server.js && concurrently \"npm run server\" \"npm run start\""
+    "dev": "node scripts/setup-env.js && concurrently \"npm run server\" \"npm run start\""
   },
   "eslintConfig": {
     "extends": [
