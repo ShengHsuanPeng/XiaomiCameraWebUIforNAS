@@ -70,24 +70,23 @@ const Thumbnail = styled.img`
 
 const PlayIcon = styled.div`
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 50px;
-  height: 50px;
+  bottom: 10px;
+  left: 10px;
+  width: 32px;
+  height: 32px;
   background-color: rgba(59, 130, 246, 0.8);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 24px;
+  font-size: 16px;
   opacity: 0.8;
   transition: opacity 0.2s, transform 0.2s;
   
   ${VideoCard}:hover & {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1.1);
+    transform: scale(1.1);
   }
 `;
 
