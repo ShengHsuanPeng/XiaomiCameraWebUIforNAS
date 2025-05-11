@@ -97,7 +97,7 @@ app.use(express.static(path.join(__dirname, 'build')));
 app.use('/thumbnails', express.static(THUMBNAIL_BASE_PATH));
 
 // 配置常數 - 可調整以平衡性能
-const THUMBNAIL_GENERATION_TIMEOUT = 20000; // 20秒超時
+const THUMBNAIL_GENERATION_TIMEOUT = 10000; // 10秒超時
 const DURATION_QUERY_TIMEOUT = 15000;  // 15秒超時
 const VIDEO_BATCH_SIZE = 5; // 一批處理的影片數量
 const BATCH_INTERVAL = 500; // 批次之間的間隔時間 (毫秒)
@@ -105,6 +105,7 @@ const BATCH_INTERVAL = 500; // 批次之間的間隔時間 (毫秒)
 // 保存已處理的時長資訊的快取
 const durationCache = new Map();
 const thumbnailCache = new Map();
+const thumbnailFailCache = new Set(); // 記錄生成失敗的縮略圖
 
 // 獲取影片時長的函數
 const getVideoDuration = (filePath) => {
@@ -150,6 +151,12 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
     // 組成快取鍵
     const cacheKey = `${cameraId}_${date}_${videoId}`;
     
+    // 檢查是否已知生成失敗，避免重複嘗試
+    if (thumbnailFailCache.has(cacheKey)) {
+      console.log(`縮略圖先前生成失敗，直接使用錯誤圖片: ${cacheKey}`);
+      return await useErrorImage(thumbnailPath, cacheKey, cameraId, date);
+    }
+    
     // 檢查快取中是否已存在
     if (thumbnailCache.has(cacheKey)) {
       // console.log(`從快取返回縮略圖路徑: ${cacheKey}`);
@@ -172,7 +179,8 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
         // 添加超時處理，避免無限等待
         const timeoutId = setTimeout(() => {
           console.warn(`縮略圖生成超時: ${videoPath}`);
-          // 超時時使用錯誤圖片
+          // 超時時使用錯誤圖片並記錄失敗
+          thumbnailFailCache.add(cacheKey);
           useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
         }, THUMBNAIL_GENERATION_TIMEOUT);
         
@@ -180,6 +188,8 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
           .on('error', (err) => {
             clearTimeout(timeoutId); // 清除超時
             console.error('生成縮略圖失敗:', err);
+            // 記錄失敗以避免重複嘗試
+            thumbnailFailCache.add(cacheKey);
             // 失敗時使用錯誤圖片
             useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
           })
@@ -621,6 +631,13 @@ app.get('/api/cameras/:cameraId/dates/:date/videos', async (req, res) => {
 app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
   try {
     const { cameraId, dateStr } = req.params;
+    const cacheKey = `${cameraId}_${dateStr}_thumb`;
+    
+    // 檢查是否為已知失敗的縮略圖
+    if (thumbnailFailCache.has(cacheKey)) {
+      console.log(`直接返回錯誤圖片: ${cacheKey}`);
+      return res.sendFile(DEFAULT_ERROR_IMAGE);
+    }
     
     // 解析日期字符串
     const dateInfo = parseDateString(dateStr);
@@ -632,6 +649,7 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
     try {
       await fs.access(datePath);
     } catch (error) {
+      thumbnailFailCache.add(cacheKey);
       return res.status(404).json({ error: '找不到指定的日期目錄' });
     }
     
@@ -640,6 +658,7 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
     const mp4Files = videoFiles.filter(file => file.endsWith('.mp4'));
     
     if (mp4Files.length === 0) {
+      thumbnailFailCache.add(cacheKey);
       return res.status(404).json({ error: '在指定時間沒有找到影片' });
     }
     
@@ -650,18 +669,19 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
     // 生成縮略圖的文件名和路徑
     const thumbnailFileName = `${cameraId}_${dateStr}_thumb.jpg`;
     const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, thumbnailFileName);
+    const thumbnailDir = path.dirname(thumbnailPath);
     
     // 確保縮略圖目錄存在
-    await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await fs.mkdir(thumbnailDir, { recursive: true });
     
     // 嘗試獲取現有縮略圖，如果不存在則生成
     try {
       await fs.access(thumbnailPath);
       // 如果縮略圖已存在，直接返回
-      res.sendFile(thumbnailPath);
+      return res.sendFile(thumbnailPath);
     } catch (error) {
       // 縮略圖不存在，需要生成
-      // console.log(`為相機 ${cameraId} 日期 ${dateStr} 生成縮略圖`);
+      console.log(`為相機 ${cameraId} 日期 ${dateStr} 生成縮略圖`);
       
       // 添加超時處理
       const timeoutPromise = new Promise((_, reject) => {
@@ -675,6 +695,7 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
         ffmpeg(videoPath)
           .on('error', (err) => {
             console.error('生成縮略圖失敗:', err);
+            thumbnailFailCache.add(cacheKey);
             reject(err);
           })
           .on('end', () => {
@@ -682,35 +703,38 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
           })
           .screenshots({
             count: 1,
-            folder: path.dirname(thumbnailPath),
+            folder: thumbnailDir,
             filename: path.basename(thumbnailPath),
-            size: '320x180' // 16:9 縮略圖大小
+            size: '320x180', // 16:9 縮略圖大小
+            timestamps: ['5%'] // 從影片開始的 5% 位置取截圖，避免黑畫面
           });
       });
       
       // 使用 Promise.race 來處理可能的超時情況
       try {
         const result = await Promise.race([ffmpegPromise, timeoutPromise]);
-        res.sendFile(result);
+        return res.sendFile(result);
       } catch (err) {
         console.error('縮略圖生成失敗或超時:', err);
+        thumbnailFailCache.add(cacheKey);
+        
         // 使用預設錯誤圖片
         try {
           await fs.copyFile(DEFAULT_ERROR_IMAGE, thumbnailPath);
-          res.sendFile(thumbnailPath);
+          return res.sendFile(thumbnailPath);
         } catch (copyErr) {
           // 如果連複製也失敗，直接返回錯誤圖片
           if (await fileExists(DEFAULT_ERROR_IMAGE)) {
-            res.sendFile(DEFAULT_ERROR_IMAGE);
+            return res.sendFile(DEFAULT_ERROR_IMAGE);
           } else {
-            res.status(500).json({ error: '無法生成縮略圖' });
+            return res.status(500).json({ error: '無法生成縮略圖' });
           }
         }
       }
     }
   } catch (error) {
     console.error(`獲取縮略圖失敗:`, error);
-    res.status(500).json({ error: '獲取縮略圖失敗' });
+    return res.status(500).json({ error: '獲取縮略圖失敗' });
   }
 });
 
