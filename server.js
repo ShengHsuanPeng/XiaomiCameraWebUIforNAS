@@ -463,12 +463,12 @@ io.on('connection', (socket) => {
         const room = `${cameraId}_${date}`;
         io.to(room).emit('durationUpdated', {
           videoId,
-          duration: duration || 'Unknown',
+          duration: duration || '未知',
           timestamp: Date.now(),
           isSpecialRequest: true
         });
         
-        console.log(`Responded to special request: Video ${videoId} duration is ${duration || 'Unknown'}`);
+        console.log(`Responded to special request: Video ${videoId} duration is ${duration || '未知'}`);
       } else {
         console.error(`Cannot find requested video: ${videoId}`);
       }
@@ -509,7 +509,7 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
         // Notify clients duration is obtained
         io.to(room).emit('durationUpdated', { 
           videoId: firstVideo.id, 
-          duration: duration || 'Unknown',
+          duration: duration || '未知',
           timestamp: Date.now(),
           index: 0,
           total: totalVideos,
@@ -554,7 +554,7 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
         // Notify clients duration is obtained
         io.to(room).emit('durationUpdated', { 
           videoId: video.id, 
-          duration: duration || 'Unknown',
+          duration: duration || '未知',
           timestamp: Date.now(),
           index: i,
           total: totalVideos
@@ -634,7 +634,7 @@ app.get('/api/video-duration/:cameraId/:date/:videoId', async (req, res) => {
     
     res.json({ 
       videoId,
-      duration: duration || 'Unknown',
+      duration: duration || '未知',
       timestamp: Date.now()
     });
   } catch (error) {
@@ -725,7 +725,7 @@ app.get('/api/cameras/:cameraId/dates/:date/videos', async (req, res) => {
           name: file,
           timestamp,
           startTime: startTime.replace('M', ':').replace('S', ''), // Format as "minutes:seconds" format
-          duration: 'Loading', // Return loading first, update later
+          duration: '載入中', // Return loading first, update later
           thumbnail: `/thumbnails/${cameraId}/${date}/${thumbnailFileName}`
         };
       });

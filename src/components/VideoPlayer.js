@@ -297,16 +297,16 @@ const VideoPlayer = () => {
   const [videoList, setVideoList] = useState([]);
   const [prevVideo, setPrevVideo] = useState(null);
   const [nextVideo, setNextVideo] = useState(null);
-  const [timelineVideos, setTimelineVideos] = useState([]); // 時間軸上顯示的影片
-  const [currentVideoTime, setCurrentVideoTime] = useState(0); // 當前播放進度
-  const [isPlaylistMode, setIsPlaylistMode] = useState(true); // 預設啟用無縫播放模式
+  const [timelineVideos, setTimelineVideos] = useState([]); // videos on timeline
+  const [currentVideoTime, setCurrentVideoTime] = useState(0); // current video progress
+  const [isPlaylistMode, setIsPlaylistMode] = useState(true); // default to seamless playback mode
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const timelineRef = useRef(null);
   const navigate = useNavigate();
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
-  const swipeThreshold = 80; // 滑動閾值
+  const swipeThreshold = 80; // swipe threshold
   
   useEffect(() => {
     const handleResize = () => {
@@ -319,7 +319,7 @@ const VideoPlayer = () => {
     };
   }, []);
   
-  // 添加觸控滑動事件處理
+  // Add touch swipe event handling
   useEffect(() => {
     const handleTouchStart = (e) => {
       touchStartX.current = e.touches[0].clientX;
@@ -333,13 +333,13 @@ const VideoPlayer = () => {
     const handleSwipe = () => {
       const swipeDistance = touchEndX.current - touchStartX.current;
       
-      // 如果滑動距離大於閾值
+      // If swipe distance is greater than threshold
       if (Math.abs(swipeDistance) > swipeThreshold) {
         if (swipeDistance > 0 && prevVideo) {
-          // 向右滑動，顯示上一個
+          // Swipe right, show previous
           navigate(`/camera/${cameraId}/date/${date}/video/${prevVideo.id}`);
         } else if (swipeDistance < 0 && nextVideo) {
-          // 向左滑動，顯示下一個
+          // Swipe left, show next
           navigate(`/camera/${cameraId}/date/${date}/video/${nextVideo.id}`);
         }
       }
@@ -357,7 +357,7 @@ const VideoPlayer = () => {
     }
   }, [navigate, cameraId, date, prevVideo, nextVideo, isMobile]);
   
-  // 鍵盤導航處理
+  // Keyboard navigation handling
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
@@ -377,7 +377,7 @@ const VideoPlayer = () => {
     };
   }, [navigate, cameraId, date, prevVideo, nextVideo]);
   
-  // 設置時間軸和當前影片進度更新
+  // Set up timeline and current video progress updates
   useEffect(() => {
     let progressInterval;
     
@@ -400,32 +400,32 @@ const VideoPlayer = () => {
     };
   }, [showVideo, isPlaylistMode]);
   
-  // 組織影片時間軸
+  // Organize video timeline
   useEffect(() => {
     if (!videoList.length || !video) return;
 
-    // 按時間戳排序影片列表
+    // Sort video list by timestamp
     const sortedVideos = [...videoList].sort((a, b) => a.timestamp - b.timestamp);
     
-    // 找到當前影片在整個列表中的索引
+    // Find current video's index in the full list
     const currentIndex = sortedVideos.findIndex(v => v.id === video.id);
     if (currentIndex === -1) return;
     
-    // 獲取當前影片的時間戳
+    // Get current video's timestamp
     const currentTimestamp = sortedVideos[currentIndex].timestamp;
     
-    // 計算前後2小時範圍（7200秒）
+    // Calculate 2-hour range before and after (7200 seconds)
     const startRange = currentTimestamp - 7200;
     const endRange = currentTimestamp + 7200;
     
-    // 篩選出前後2小時內的影片
+    // Filter videos within 2 hours before and after
     const filteredVideos = sortedVideos.filter(v => 
       v.timestamp >= startRange && v.timestamp <= endRange
     );
     
     setTimelineVideos(filteredVideos);
     
-    // 如果時間軸已渲染，滾動到當前影片位置
+    // If timeline is rendered, scroll to current video position
     setTimeout(() => {
       if (timelineRef.current) {
         const activeElement = timelineRef.current.querySelector('[data-active="true"]');
@@ -442,11 +442,11 @@ const VideoPlayer = () => {
         const videos = await getDateVideos(cameraId, date);
         setVideoList(videos);
         
-        // 查找當前影片的索引
+        // Find current video's index
         const currentIndex = videos.findIndex(v => v.id === videoId);
         let foundVideo = currentIndex >= 0 ? videos[currentIndex] : null;
         
-        // 設置前後影片
+        // Set previous and next videos
         if (currentIndex > 0) {
           setPrevVideo(videos[currentIndex - 1]);
         } else {
@@ -459,7 +459,7 @@ const VideoPlayer = () => {
           setNextVideo(null);
         }
         
-        // 如果找到影片但時長是「載入中」或「未知」，嘗試使用緩存獲取
+        // if found video but duration is "Loading..." or "Unknown", try to get from cache
         if (foundVideo && (!foundVideo.duration || foundVideo.duration === '載入中' || foundVideo.duration === '未知')) {
           try {
             const duration = await getVideoDuration(cameraId, date, videoId);
@@ -470,13 +470,13 @@ const VideoPlayer = () => {
               };
             }
           } catch (err) {
-            console.error('獲取影片時長失敗:', err);
+            console.error('Failed to get video duration:', err);
           }
         }
         
         setVideo(foundVideo || null);
       } catch (error) {
-        console.error('載入影片資訊失敗:', error);
+        console.error('Load video info failed:', error);
       } finally {
         setLoading(false);
       }
@@ -484,7 +484,7 @@ const VideoPlayer = () => {
     
     if (cameraId && date && videoId) {
       loadVideo();
-      // 重置影片播放狀態
+      // Reset video playback state
       setShowVideo(false);
     }
   }, [cameraId, date, videoId]);
@@ -502,11 +502,11 @@ const VideoPlayer = () => {
   
   useEffect(() => {
     if (videoRef.current && isPlaylistMode) {
-      // 自動播放影片
+      // Auto play video
       videoRef.current.load();
-      videoRef.current.play().catch(err => console.error('自動播放影片失敗:', err));
+      videoRef.current.play().catch(err => console.error('Failed to auto-play video:', err));
       
-      // 預加載下一個影片（如果有）
+      // Preload next video (if exists)
       if (nextVideo) {
         const preloadLink = document.createElement('link');
         preloadLink.rel = 'preload';
@@ -517,40 +517,40 @@ const VideoPlayer = () => {
     }
   }, [isPlaylistMode, nextVideo, cameraId, date, videoRef.current]);
   
-  // 處理影片播放結束時的行為
+  // handle video playback ended
   useEffect(() => {
     const handleVideoEnded = () => {
       if (nextVideo) {
-        // 無縫播放模式：直接加載下一個影片而不導航
+        // Seamless playback mode: Load next video without navigating
         const nextVideoPath = getVideoPath(cameraId, date, nextVideo.name);
         if (videoRef.current) {
-          // 儲存當前播放元素
+          // Store current playing element
           const videoElement = videoRef.current;
           
-          // 設置過渡效果
+          // Set transition effect
           videoElement.style.transition = 'opacity 0.5s';
           videoElement.style.opacity = '0.5';
           
-          // 更新影片源
+          // Update video source
           videoElement.src = nextVideoPath;
           
-          // 加載並播放新影片
+          // Load and play new video
           videoElement.load();
           
           const playPromise = videoElement.play();
           
           if (playPromise !== undefined) {
             playPromise.then(() => {
-              // 播放成功後恢復透明度
+              // After playback, restore opacity
               videoElement.style.opacity = '1';
               
-              // 更新當前影片狀態
+              // Update current video state
               setVideo(nextVideo);
               
-              // 更新 URL 但不重新加載頁面
+              // Update URL without reloading page
               window.history.replaceState(null, '', `/camera/${cameraId}/date/${date}/video/${nextVideo.id}`);
               
-              // 更新前後影片
+              // Update previous and next videos
               const currentIndex = videoList.findIndex(v => v.id === nextVideo.id);
               if (currentIndex > 0) {
                 setPrevVideo(videoList[currentIndex - 1]);
@@ -564,7 +564,7 @@ const VideoPlayer = () => {
                 setNextVideo(null);
               }
               
-              // 預加載下一個影片（如果有）
+              // Preload next video (if exists)
               if (currentIndex < videoList.length - 2) {
                 const nextNextVideo = videoList[currentIndex + 1];
                 const preloadLink = document.createElement('link');
@@ -574,7 +574,7 @@ const VideoPlayer = () => {
                 document.head.appendChild(preloadLink);
               }
             }).catch(err => {
-              console.error('自動播放下一個影片失敗:', err);
+              console.error('auto play next video failed:', err);
               videoElement.style.opacity = '1';
             });
           }
@@ -586,10 +586,10 @@ const VideoPlayer = () => {
     if (videoElement && showVideo) {
       videoElement.addEventListener('ended', handleVideoEnded);
       
-      // 添加錯誤處理
+      // Add error handling
       const handleError = (e) => {
-        console.error('影片播放錯誤:', e);
-        // 嘗試載入下一個影片
+        console.error('Video playback error:', e);
+        // Try loading next video
         if (nextVideo) {
           handleVideoEnded();
         }
@@ -609,7 +609,7 @@ const VideoPlayer = () => {
     
     if (videoRef.current) {
       videoRef.current.load();
-      videoRef.current.play().catch(err => console.error('播放影片失敗:', err));
+      videoRef.current.play().catch(err => console.error('play video failed:', err));
     }
   };
   
@@ -640,44 +640,44 @@ const VideoPlayer = () => {
   }
   
   const videoPath = getVideoPath(cameraId, date, video.name);
-  // 獲取縮略圖的完整路徑
+  // Get the full path for the thumbnail
   const thumbnailUrl = video.thumbnail 
     ? `${getApiBaseUrl()}${video.thumbnail}` 
     : `${getApiBaseUrl()}/thumbnails/${cameraId}/${date}/${cameraId}_${date}_${videoId}.jpg`;
   
-  // 點擊時間軸上的影片項目
+  // Click on video item in timeline
   const handleTimelineClick = (clickedVideo) => {
     if (videoRef.current) {
-      // 無縫播放模式：直接更換視頻源
+      // Seamless playback mode: Directly switch video source
       const clickedVideoPath = getVideoPath(cameraId, date, clickedVideo.name);
       
-      // 儲存當前播放元素
+      // Store current playing element
       const videoElement = videoRef.current;
       
-      // 設置過渡效果
+      // Set transition effect
       videoElement.style.transition = 'opacity 0.5s';
       videoElement.style.opacity = '0.5';
       
-      // 更新影片源
+      // Update video source
       videoElement.src = clickedVideoPath;
       
-      // 加載並播放新影片
+      // Load and play new video
       videoElement.load();
       
       const playPromise = videoElement.play();
       
       if (playPromise !== undefined) {
         playPromise.then(() => {
-          // 播放成功後恢復透明度
+          // After playback, restore opacity
           videoElement.style.opacity = '1';
           
-          // 更新當前影片狀態
+          // Update current video state
           setVideo(clickedVideo);
           
-          // 更新 URL 但不重新加載頁面
+          // Update URL without reloading page
           window.history.replaceState(null, '', `/camera/${cameraId}/date/${date}/video/${clickedVideo.id}`);
           
-          // 更新前後影片
+          // Update previous and next videos
           const currentIndex = videoList.findIndex(v => v.id === clickedVideo.id);
           if (currentIndex > 0) {
             setPrevVideo(videoList[currentIndex - 1]);
@@ -691,17 +691,17 @@ const VideoPlayer = () => {
             setNextVideo(null);
           }
         }).catch(err => {
-          console.error('播放選擇的影片失敗:', err);
+          console.error('play selected video failed:', err);
           videoElement.style.opacity = '1';
         });
       }
     } else {
-      // 導航到所選影片頁面 (這裡基本不會執行到，因為我們直接顯示影片)
+      // Navigate to selected video page (this should rarely execute, as we directly display the video)
       navigate(`/camera/${cameraId}/date/${date}/video/${clickedVideo.id}`);
     }
   };
   
-  // 格式化時間，只顯示時:分
+  // Format time to show only hours:minutes
   const formatTimeShort = (timestamp) => {
     const date = new Date(timestamp * 1000);
     return date.toLocaleTimeString('zh-TW', {
@@ -747,7 +747,7 @@ const VideoPlayer = () => {
         {!isMobile && ` - ${video.name}`}
       </SubTitle>
       
-      {/* 時間軸部分 */}
+      {/* Timeline section */}
       {timelineVideos.length > 0 && (
         <TimelineContainer>
           <Timeline ref={timelineRef}>

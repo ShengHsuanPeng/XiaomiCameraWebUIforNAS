@@ -143,7 +143,7 @@ const Header = () => {
     }
   }, [isMobile]);
   
-  // 點擊外部區域關閉導航
+  // Click outside to close navigation
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (navOpen && !event.target.closest('.mobile-nav')) {

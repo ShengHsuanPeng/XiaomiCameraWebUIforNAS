@@ -226,7 +226,7 @@ const FilterSelect = styled.select`
   }
 `;
 
-// 分頁控制器樣式
+// pagination controller style
 const PaginationContainer = styled.div`
   display: flex;
   justify-content: center;
@@ -438,10 +438,10 @@ const ApplyButton = styled.button`
   }
 `;
 
-// 根據螢幕寬度格式化日期標籤
+// format date label based on screen width
 const formatDateLabel = (label, isMobile) => {
   if (isMobile) {
-    // 在手機上只顯示月日和小時，例如：05-11 14:00
+    // on mobile only show month day and hour, e.g. 05-11 14:00
     const parts = label.split(' ');
     if (parts.length === 2) {
       const dateParts = parts[0].split('-');
@@ -450,7 +450,7 @@ const formatDateLabel = (label, isMobile) => {
       }
     }
   }
-  return label; // 在桌面上顯示完整日期
+  return label; // on desktop show full date
 };
 
 
@@ -461,9 +461,9 @@ const DateList = () => {
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [thumbnailErrors, setThumbnailErrors] = useState({});
-  const [cameraName, setCameraName] = useState(cameraId); // 預設使用 ID，後續更新
+  const [cameraName, setCameraName] = useState(cameraId); // default use ID, update later
 
-  // 篩選狀態
+  // filter status
   const [dateFilter, setDateFilter] = useState('all');
   const [timeFilter, setTimeFilter] = useState('all');
   const [showCalendar, setShowCalendar] = useState(false);
@@ -471,7 +471,7 @@ const DateList = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [availableDates, setAvailableDates] = useState({});
   
-  // 分頁狀態
+  // pagination status
   const [currentPage, setCurrentPage] = useState(1);
   const daysPerPage = 7;
   
@@ -489,14 +489,14 @@ const DateList = () => {
   useEffect(() => {
     const loadDates = async () => {
       try {
-        // 獲取日期列表
+        // get date list
         const dateList = await getCameraDates(cameraId);
-        console.log('獲取到的日期列表:', dateList);
+        console.log('get date list:', dateList);
         
         setDates(dateList);
         setFilteredDates(dateList);
         
-        // 構建可用日期映射，以便在日曆中顯示
+        // build available date map, to show in calendar
         const dateMap = {};
         dateList.forEach(date => {
           const year = date.date.substring(0, 4);
@@ -511,11 +511,11 @@ const DateList = () => {
         });
         setAvailableDates(dateMap);
         
-        // 設置初始日期為今天或最近的日期
+        // set initial date to today or nearest date
         const today = new Date();
         setCalendarDate(today);
       } catch (error) {
-        console.error('載入日期列表失敗:', error);
+        console.error('load date list failed:', error);
       } finally {
         setLoading(false);
       }
@@ -526,7 +526,7 @@ const DateList = () => {
     }
   }, [cameraId]);
   
-  // 載入相機名稱
+  // load camera name
   useEffect(() => {
     if (!cameraId) return;
     
@@ -538,13 +538,13 @@ const DateList = () => {
     loadCameraName();
   }, [cameraId]);
   
-  // 根據選擇的日期和時間篩選日期
+  // filter date based on selected date and time
   useEffect(() => {
     if (dates.length === 0) return;
     
     let filtered = [...dates];
     
-    // 根據選定的日期篩選
+    // filter date based on selected date
     if (dateFilter !== 'all' && selectedDate) {
       const year = selectedDate.getFullYear().toString().padStart(4, '0');
       const month = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
@@ -554,7 +554,7 @@ const DateList = () => {
       filtered = filtered.filter(date => date.date.startsWith(datePrefix));
     }
     
-    // 根據時段篩選
+    // filter date based on time
     if (timeFilter !== 'all') {
       filtered = filtered.filter(date => {
         const hour = parseInt(date.date.substring(8, 10), 10);
@@ -577,25 +577,25 @@ const DateList = () => {
     setFilteredDates(filtered);
   }, [dates, dateFilter, timeFilter, selectedDate]);
   
-  // 生成行事曆數據
+  // generate calendar data
   const generateCalendarDays = () => {
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
     
-    // 獲取該月的第一天和最後一天
+    // get first day and last day of the month
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     
-    // 獲取該月第一天是星期幾（0是星期日，6是星期六）
+    // get first day of the week (0 is Sunday, 6 is Saturday)
     const firstDayOfWeek = firstDay.getDay();
     
-    // 獲取該月的總天數
+    // get total days of the month
     const daysInMonth = lastDay.getDate();
     
-    // 創建日期數組
+    // create date array
     const days = [];
     
-    // 添加上個月的日期來填充第一行
+    // add previous month's date to fill the first row
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = firstDayOfWeek - 1; i >= 0; i--) {
       days.push({
@@ -608,7 +608,7 @@ const DateList = () => {
       });
     }
     
-    // 檢查日期是否有錄影
+    // check if date has video
     const hasVideos = (year, month, day) => {
       const formattedYear = year.toString().padStart(4, '0');
       const formattedMonth = (month + 1).toString().padStart(2, '0');
@@ -617,7 +617,7 @@ const DateList = () => {
       return availableDates[key] && availableDates[key].length > 0;
     };
     
-    // 添加本月的日期
+    // add current month's date
     const today = new Date();
     for (let i = 1; i <= daysInMonth; i++) {
       const isToday = (
@@ -645,7 +645,7 @@ const DateList = () => {
       });
     }
     
-    // 如果總數小於42，添加下個月的日期來填充
+    // if total days is less than 42, add next month's date to fill
     const totalDays = days.length;
     const daysToAdd = Math.ceil((42 - totalDays) / 7) * 7;
     
@@ -663,18 +663,18 @@ const DateList = () => {
     return days;
   };
   
-  // 選擇日期
+  // select date
   const handleSelectDate = (day) => {
     if (!day.isSelectable || !day.hasVideos) return;
     
     const newDate = new Date(day.year, day.month, day.day);
     setSelectedDate(newDate);
     
-    // 設置篩選器為選擇的日期
+    // set filter to selected date
     setDateFilter('selected');
     setShowCalendar(false);
     
-    // 應用篩選
+    // apply filter
     const year = day.year.toString().padStart(4, '0');
     const month = (day.month + 1).toString().padStart(2, '0');
     const dayStr = day.day.toString().padStart(2, '0');
@@ -684,15 +684,15 @@ const DateList = () => {
     setFilteredDates(filtered);
   };
   
-  // 清除日期篩選
+  // clear date filter
   const handleClearDateFilter = () => {
     setDateFilter('all');
     setSelectedDate(null);
     
-    // 應用其他篩選條件
+    // apply other filters
     let filtered = [...dates];
     
-    // 根據時段篩選
+    // filter date based on time
     if (timeFilter !== 'all') {
       filtered = filtered.filter(date => {
         const hour = parseInt(date.date.substring(8, 10), 10);
@@ -715,30 +715,30 @@ const DateList = () => {
     setFilteredDates(filtered);
   };
   
-  // 下一個月
+  // next month
   const handleNextMonth = () => {
     const newDate = new Date(calendarDate);
     newDate.setMonth(newDate.getMonth() + 1);
     setCalendarDate(newDate);
   };
   
-  // 上一個月
+  // previous month
   const handlePrevMonth = () => {
     const newDate = new Date(calendarDate);
     newDate.setMonth(newDate.getMonth() - 1);
     setCalendarDate(newDate);
   };
   
-  // 星期列表
+  // weekdays list
   const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
   
-  // 獲取月份名稱
+  // get month name
   const getMonthName = (month) => {
     const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
     return months[month];
   };
   
-  // 格式化選中的日期顯示
+  // format selected date
   const formatSelectedDate = (date) => {
     if (!date) return '';
     const year = date.getFullYear();
@@ -747,12 +747,12 @@ const DateList = () => {
     return `${year}-${month}-${day}`;
   };
   
-  // 修改 groupDatesByDay 函數中的縮略圖處理
+  // modify groupDatesByDay function to handle thumbnail error
   const groupDatesByDay = (dates) => {
     const groups = {};
     
     dates.forEach(date => {
-      // 從日期中提取年月日
+      // extract year, month, day from date
       const year = date.date.substring(0, 4);
       const month = date.date.substring(4, 6);
       const day = date.date.substring(6, 8);
@@ -765,7 +765,7 @@ const DateList = () => {
         };
       }
       
-      // 從日期中提取小時
+      // extract hour from date
       const hour = date.date.substring(8, 10);
       
       groups[dayKey].times.push({
@@ -774,35 +774,35 @@ const DateList = () => {
       });
     });
     
-    // 將分組轉換為陣列並排序（按日期降序）
+    // convert groups to array and sort (by date descending)
     return Object.entries(groups)
       .map(([key, group]) => ({ key, ...group }))
       .sort((a, b) => b.key.localeCompare(a.key));
   };
   
-  // 處理縮略圖錯誤
+  // handle thumbnail error
   const handleThumbnailError = (dateId) => {
-    console.warn(`日期 ${dateId} 縮略圖載入失敗，使用占位圖`);
+    console.warn(`date ${dateId} thumbnail loading failed, use placeholder image`);
     setThumbnailErrors(prev => ({
       ...prev,
       [dateId]: true
     }));
-    // 不再重試加載，直接使用備用顯示
+    // do not retry loading, use placeholder image directly
   };
   
-  // 獲取API基礎URL
+  // get API base URL
   const getApiBaseUrl = () => {
-    // 如果在生產環境，使用相對路徑
+    // if in production environment, use relative path
     if (process.env.NODE_ENV === 'production') {
       return '';
     }
     
-    // 嘗試從環境變數獲取
+    // try to get from environment variable
     if (process.env.REACT_APP_API_BASE_URL) {
       return process.env.REACT_APP_API_BASE_URL;
     }
     
-    // 使用環境變數中的 IP 和端口，如果未設置則使用默認值
+    // use environment variable IP and port, if not set, use default value
     const apiHost = process.env.REACT_APP_API_HOST || '192.168.68.69';
     const apiPort = process.env.REACT_APP_API_PORT || '5001';
     
@@ -813,22 +813,22 @@ const DateList = () => {
     return <div>載入中...</div>;
   }
   
-  // 計算分組後的日期數據
+  // calculate grouped dates data
   const groupedDates = groupDatesByDay(filteredDates);
   const totalPages = Math.ceil(groupedDates.length / daysPerPage);
   
-  // 獲取當前頁的日期組
+  // get current page's date group
   const currentDates = groupedDates.slice(
     (currentPage - 1) * daysPerPage,
     currentPage * daysPerPage
   );
   
-  // 處理頁面變更
+  // handle page change
   const handlePageChange = (page) => {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
     
-    // 滾動到頁面頂部
+    // scroll to top of the page
     window.scrollTo(0, 0);
   };
   
@@ -873,7 +873,7 @@ const DateList = () => {
           
           <OrderInfo>按時間順序顯示（從早到晚）| 共 {filteredDates.length} 個時段</OrderInfo>
           
-          {/* 日期分組顯示 - 只顯示當前頁的日期組 */}
+          {/* date group display - only show current page's date group */}
           {currentDates.map(dateGroup => (
             <DateSection key={dateGroup.key}>
               <DateHeader>
@@ -906,7 +906,7 @@ const DateList = () => {
             </DateSection>
           ))}
           
-          {/* 分頁控制器 */}
+          {/* pagination controller */}
           {totalPages > 1 && (
             <PaginationContainer>
               <PageButton 
@@ -941,7 +941,7 @@ const DateList = () => {
             </PaginationContainer>
           )}
           
-          {/* 行事曆彈窗 */}
+          {/* calendar popup */}
           {showCalendar && (
             <CalendarOverlay onClick={() => setShowCalendar(false)}>
               <CalendarContainer onClick={e => e.stopPropagation()}>
@@ -961,12 +961,12 @@ const DateList = () => {
                 
                 <CalendarBody>
                   <CalendarGrid>
-                    {/* 星期列表 */}
+                    {/* weekdays list */}
                     {weekdays.map(day => (
                       <CalendarDayHeader key={day}>{day}</CalendarDayHeader>
                     ))}
                     
-                    {/* 日期方格 */}
+                    {/* date grid */}
                     {generateCalendarDays().map((day, index) => (
                       <CalendarDay 
                         key={index} 

@@ -115,7 +115,7 @@ export const getVideoDuration = async (cameraId, date, videoId) => {
     return data.duration;
   } catch (error) {
     console.error(`Failed to get duration for video ${videoId}:`, error);
-    return 'Unknown';
+    return '未知';
   }
 };
 
