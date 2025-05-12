@@ -58,18 +58,15 @@ const CameraImage = styled.div`
 const CameraEmoji = styled.span`
   position: relative;
   z-index: 2;
-  background-color: rgba(255, 255, 255, 0.8);
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
+  color: white;
+  font-size: 3rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   
   @media (min-width: 768px) {
-    width: 60px;
-    height: 60px;
+    font-size: 4rem;
   }
 `;
 
@@ -228,7 +225,7 @@ const CameraList = () => {
                 ) : (
                   <PlaceholderThumbnail />
                 )}
-                <CameraEmoji>📹</CameraEmoji>
+                <CameraEmoji>▶</CameraEmoji>
               </CameraImage>
               <CameraInfo>
                 <CameraName>{camera.name}</CameraName>
