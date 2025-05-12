@@ -332,7 +332,7 @@ const useErrorImage = async (thumbnailPath, cacheKey, cameraId, date) => {
 
 // Get camera name from config, or use default format if not exists
 const getCameraName = (cameraId) => {
-  return config.cameras[cameraId] || `Camera ${cameraId}`;
+  return config.cameras[cameraId] || `相機 ${cameraId}`;
 };
 
 // Parse date string
