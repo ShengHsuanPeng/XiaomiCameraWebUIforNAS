@@ -36,6 +36,11 @@ const VideoGrid = styled.div`
   @media (min-width: 768px) {
     gap: 1.5rem;
   }
+  
+  @media (max-width: 767px) {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+  }
 `;
 
 const VideoCard = styled.div`
@@ -92,12 +97,24 @@ const PlayIcon = styled.div`
 
 const VideoInfo = styled.div`
   padding: 1rem;
+  
+  @media (max-width: 767px) {
+    padding: 0.5rem;
+  }
 `;
 
 const VideoTitle = styled.h3`
   margin: 0 0 0.5rem;
   font-size: 1rem;
   color: ${theme.text.primary};
+  
+  @media (max-width: 767px) {
+    margin: 0;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 `;
 
 const VideoMeta = styled.div`
@@ -105,6 +122,10 @@ const VideoMeta = styled.div`
   justify-content: space-between;
   color: ${theme.text.muted};
   font-size: 0.9rem;
+  
+  @media (max-width: 767px) {
+    display: none;
+  }
 `;
 
 // 添加一個加載中的縮略圖占位
