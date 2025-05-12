@@ -202,6 +202,7 @@ const TimelineContainer = styled.div`
   border-radius: 8px;
   padding: 1rem;
   box-shadow: ${theme.shadow.md};
+  max-width: 1024px;   /* Prevent overflow outside parent container */
 `;
 
 const TimelineTitle = styled.h3`
@@ -220,11 +221,11 @@ const Timeline = styled.div`
   overflow-x: auto;
   white-space: nowrap;
   scrollbar-width: thin;
-  
+
   &::-webkit-scrollbar {
     height: 8px;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: ${theme.primary.main};
     border-radius: 4px;
@@ -771,7 +772,7 @@ const VideoPlayer = () => {
       
       <SlideContainer ref={containerRef}>
         <PlayerContainer>
-          <VideoElement ref={videoRef} controls autoPlay crossOrigin="anonymous">
+          <VideoElement ref={videoRef} controls playsInline webkit-playsinline="true" muted autoPlay crossOrigin="anonymous">
             <source src={videoPath} type="video/mp4" />
             您的瀏覽器不支援影片播放。
           </VideoElement>
