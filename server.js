@@ -879,6 +879,120 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
   }
 });
 
+// Get camera thumbnail without specific date (fallback)
+app.get('/api/camera-thumbnail/:cameraId', async (req, res) => {
+  try {
+    const { cameraId } = req.params;
+    const cacheKey = `${cameraId}_default_thumb`;
+    
+    // Check if it's a known failed thumbnail
+    if (thumbnailFailCache.has(cacheKey)) {
+      console.log(`Directly return error image for default thumbnail: ${cacheKey}`);
+      return res.sendFile(DEFAULT_ERROR_IMAGE);
+    }
+    
+    // Find the latest date directory for this camera
+    const cameraPath = path.join(VIDEO_BASE_PATH, cameraId);
+    
+    try {
+      await fs.access(cameraPath);
+    } catch (error) {
+      console.error(`Camera directory not found: ${cameraPath}`);
+      thumbnailFailCache.add(cacheKey);
+      return res.sendFile(DEFAULT_ERROR_IMAGE);
+    }
+    
+    // Get all date directories
+    const dateDirs = await fs.readdir(cameraPath);
+    if (dateDirs.length === 0) {
+      console.error(`No date directories found for camera: ${cameraId}`);
+      thumbnailFailCache.add(cacheKey);
+      return res.sendFile(DEFAULT_ERROR_IMAGE);
+    }
+    
+    // Sort dates in descending order (newest first)
+    dateDirs.sort((a, b) => b.localeCompare(a));
+    
+    // Find first directory with videos
+    let validDateDir = null;
+    let videoPath = null;
+    
+    for (const dateDir of dateDirs) {
+      const datePath = path.join(cameraPath, dateDir);
+      const stats = await fs.stat(datePath);
+      
+      if (stats.isDirectory()) {
+        // Check if directory has mp4 files
+        const files = await fs.readdir(datePath);
+        const mp4Files = files.filter(file => file.endsWith('.mp4'));
+        
+        if (mp4Files.length > 0) {
+          validDateDir = dateDir;
+          videoPath = path.join(datePath, mp4Files[0]);
+          break;
+        }
+      }
+    }
+    
+    if (!validDateDir || !videoPath) {
+      console.error(`No videos found for camera: ${cameraId}`);
+      thumbnailFailCache.add(cacheKey);
+      return res.sendFile(DEFAULT_ERROR_IMAGE);
+    }
+    
+    // Generate thumbnail file name and path
+    const thumbnailFileName = `${cameraId}_default_thumb.jpg`;
+    const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, thumbnailFileName);
+    const thumbnailDir = path.dirname(thumbnailPath);
+    
+    // Ensure thumbnail directory exists
+    await fs.mkdir(thumbnailDir, { recursive: true });
+    
+    // Try to get existing thumbnail, if not exists generate
+    try {
+      await fs.access(thumbnailPath);
+      // If thumbnail exists, return directly
+      return res.sendFile(thumbnailPath);
+    } catch (error) {
+      // Thumbnail doesn't exist, need to generate
+      console.log(`Generating default thumbnail for camera ${cameraId}`);
+      
+      // Generate thumbnail using ffmpeg
+      try {
+        await fs.mkdir(thumbnailDir, { recursive: true });
+        
+        await new Promise((resolve, reject) => {
+          ffmpeg(videoPath)
+            .on('error', (err) => {
+              console.error('Failed to generate default thumbnail:', err);
+              thumbnailFailCache.add(cacheKey);
+              reject(err);
+            })
+            .on('end', () => {
+              resolve();
+            })
+            .screenshots({
+              count: 1,
+              folder: thumbnailDir,
+              filename: thumbnailFileName,
+              size: '320x180', // 16:9 thumbnail size
+              timestamps: ['5%'] // Take screenshot from 5% of the video
+            });
+        });
+        
+        return res.sendFile(thumbnailPath);
+      } catch (err) {
+        console.error('Error generating default thumbnail:', err);
+        thumbnailFailCache.add(cacheKey);
+        return res.sendFile(DEFAULT_ERROR_IMAGE);
+      }
+    }
+  } catch (error) {
+    console.error('Error processing default thumbnail request:', error);
+    return res.status(500).json({ error: 'Failed to process thumbnail request' });
+  }
+});
+
 // Helper function to check if file exists
 const fileExists = async (filePath) => {
   try {

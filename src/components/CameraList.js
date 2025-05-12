@@ -183,7 +183,8 @@ const CameraList = () => {
   // Get the latest date for a camera
   const getLatestDate = (cameraId) => {
     if (cameraDates[cameraId] && cameraDates[cameraId].length > 0) {
-      return cameraDates[cameraId][0].date;
+      // Return the latest date
+      return cameraDates[cameraId][cameraDates[cameraId].length - 1].date;
     }
     return null;
   };
