@@ -13,6 +13,8 @@ const theme = {
     default: '#f8fafc',  // 頁面背景
     paper: '#ffffff',    // 元件背景
     sidebar: '#f1f5f9',  // 側邊欄背景
+    hover: '#f1f5f9',    // 懸停背景
+    disabled: '#e2e8f0', // 禁用狀態背景
   },
   
   // 文字顏色
@@ -21,6 +23,7 @@ const theme = {
     secondary: '#334155', // 次要文字
     muted: '#64748b',     // 淡化文字
     light: '#e0e0e0',     // 淺色文字（用於深色背景）
+    disabled: '#94a3b8',  // 禁用狀態文字
   },
   
   // 邊框顏色

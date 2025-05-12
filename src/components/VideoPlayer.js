@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { getDateVideos, getVideoPath, formatTimestamp, getVideoDuration, getApiBaseUrl, getCameraName } from '../utils/dataUtils';
 import theme from '../utils/theme';
@@ -34,6 +34,56 @@ const BackLink = styled(Link)`
   &:hover {
     color: ${theme.primary.main};
     text-decoration: underline;
+  }
+`;
+
+const NavigationBar = styled.div`
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+  
+  @media (min-width: 768px) {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+`;
+
+const NavigationButtons = styled.div`
+  display: flex;
+  margin-top: 0.5rem;
+  
+  @media (min-width: 768px) {
+    margin-top: 0;
+  }
+`;
+
+const NavButton = styled(Link)`
+  padding: 0.5rem;
+  flex: 1;
+  text-align: center;
+  background-color: ${props => props.disabled ? theme.background.disabled : theme.background.paper};
+  color: ${props => props.disabled ? theme.text.disabled : theme.text.muted};
+  text-decoration: none;
+  border-radius: 4px;
+  box-shadow: ${props => props.disabled ? 'none' : theme.shadow.sm};
+  pointer-events: ${props => props.disabled ? 'none' : 'auto'};
+  font-size: 0.9rem;
+  white-space: nowrap;
+  
+  &:first-child {
+    margin-right: 0.5rem;
+  }
+  
+  &:hover {
+    color: ${props => props.disabled ? theme.text.disabled : theme.primary.main};
+    background-color: ${props => props.disabled ? theme.background.disabled : theme.background.hover};
+  }
+  
+  @media (min-width: 768px) {
+    padding: 0.5rem 0.75rem;
+    flex: none;
+    font-size: 1rem;
   }
 `;
 
@@ -120,6 +170,12 @@ const VideoDetail = styled.div`
       display: none;
     }
   }
+  
+  &.mobile-friendly {
+    @media (max-width: 767px) {
+      flex-direction: column;
+    }
+  }
 `;
 
 const DetailLabel = styled.span`
@@ -137,6 +193,12 @@ const DetailValue = styled.span`
   word-break: break-all;
 `;
 
+const SlideContainer = styled.div`
+  position: relative;
+  width: 100%;
+  touch-action: pan-y;
+`;
+
 const VideoPlayer = () => {
   const { cameraId, date, videoId } = useParams();
   const [video, setVideo] = useState(null);
@@ -144,6 +206,15 @@ const VideoPlayer = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showVideo, setShowVideo] = useState(false);
   const [cameraName, setCameraName] = useState(cameraId);
+  const [videoList, setVideoList] = useState([]);
+  const [prevVideo, setPrevVideo] = useState(null);
+  const [nextVideo, setNextVideo] = useState(null);
+  const videoRef = useRef(null);
+  const containerRef = useRef(null);
+  const navigate = useNavigate();
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+  const swipeThreshold = 80; // 滑動閾值
   
   useEffect(() => {
     const handleResize = () => {
@@ -156,11 +227,103 @@ const VideoPlayer = () => {
     };
   }, []);
   
+  // 添加觸控滑動事件處理
+  useEffect(() => {
+    const handleTouchStart = (e) => {
+      touchStartX.current = e.touches[0].clientX;
+    };
+    
+    const handleTouchEnd = (e) => {
+      touchEndX.current = e.changedTouches[0].clientX;
+      handleSwipe();
+    };
+    
+    const handleSwipe = () => {
+      const swipeDistance = touchEndX.current - touchStartX.current;
+      
+      // 如果滑動距離大於閾值
+      if (Math.abs(swipeDistance) > swipeThreshold) {
+        if (swipeDistance > 0 && prevVideo) {
+          // 向右滑動，顯示上一個
+          navigate(`/camera/${cameraId}/date/${date}/video/${prevVideo.id}`);
+        } else if (swipeDistance < 0 && nextVideo) {
+          // 向左滑動，顯示下一個
+          navigate(`/camera/${cameraId}/date/${date}/video/${nextVideo.id}`);
+        }
+      }
+    };
+    
+    const container = containerRef.current;
+    if (container && isMobile) {
+      container.addEventListener('touchstart', handleTouchStart, { passive: true });
+      container.addEventListener('touchend', handleTouchEnd, { passive: true });
+      
+      return () => {
+        container.removeEventListener('touchstart', handleTouchStart);
+        container.removeEventListener('touchend', handleTouchEnd);
+      };
+    }
+  }, [navigate, cameraId, date, prevVideo, nextVideo, isMobile]);
+  
+  // 鍵盤導航處理
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+      }
+      
+      if (e.key === 'ArrowLeft' && prevVideo) {
+        navigate(`/camera/${cameraId}/date/${date}/video/${prevVideo.id}`);
+      } else if (e.key === 'ArrowRight' && nextVideo) {
+        navigate(`/camera/${cameraId}/date/${date}/video/${nextVideo.id}`);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [navigate, cameraId, date, prevVideo, nextVideo]);
+  
+  // 影片播放結束處理
+  useEffect(() => {
+    const handleVideoEnded = () => {
+      if (nextVideo) {
+        navigate(`/camera/${cameraId}/date/${date}/video/${nextVideo.id}`);
+      }
+    };
+    
+    const videoElement = videoRef.current;
+    if (videoElement && showVideo) {
+      videoElement.addEventListener('ended', handleVideoEnded);
+      return () => {
+        videoElement.removeEventListener('ended', handleVideoEnded);
+      };
+    }
+  }, [navigate, cameraId, date, nextVideo, showVideo]);
+  
   useEffect(() => {
     const loadVideo = async () => {
       try {
-        const videoList = await getDateVideos(cameraId, date);
-        let foundVideo = videoList.find(v => v.id === videoId);
+        const videos = await getDateVideos(cameraId, date);
+        setVideoList(videos);
+        
+        // 查找當前影片的索引
+        const currentIndex = videos.findIndex(v => v.id === videoId);
+        let foundVideo = currentIndex >= 0 ? videos[currentIndex] : null;
+        
+        // 設置前後影片
+        if (currentIndex > 0) {
+          setPrevVideo(videos[currentIndex - 1]);
+        } else {
+          setPrevVideo(null);
+        }
+        
+        if (currentIndex < videos.length - 1 && currentIndex >= 0) {
+          setNextVideo(videos[currentIndex + 1]);
+        } else {
+          setNextVideo(null);
+        }
         
         // 如果找到影片但時長是「載入中」或「未知」，嘗試使用緩存獲取
         if (foundVideo && (!foundVideo.duration || foundVideo.duration === '載入中' || foundVideo.duration === '未知')) {
@@ -187,6 +350,8 @@ const VideoPlayer = () => {
     
     if (cameraId && date && videoId) {
       loadVideo();
+      // 重置影片播放狀態
+      setShowVideo(false);
     }
   }, [cameraId, date, videoId]);
   
@@ -203,6 +368,18 @@ const VideoPlayer = () => {
   
   const handlePlayClick = () => {
     setShowVideo(true);
+  };
+  
+  const goToPrevVideo = () => {
+    if (prevVideo) {
+      navigate(`/camera/${cameraId}/date/${date}/video/${prevVideo.id}`);
+    }
+  };
+  
+  const goToNextVideo = () => {
+    if (nextVideo) {
+      navigate(`/camera/${cameraId}/date/${date}/video/${nextVideo.id}`);
+    }
   };
   
   if (loading) {
@@ -227,59 +404,87 @@ const VideoPlayer = () => {
   
   return (
     <div>
-      <BackLink to={`/camera/${cameraId}/date/${date}`}>← 返回影片列表</BackLink>
+      <NavigationBar>
+        <BackLink to={`/camera/${cameraId}/date/${date}`}>← 返回影片列表</BackLink>
+        <NavigationButtons>
+          <NavButton 
+            to={prevVideo ? `/camera/${cameraId}/date/${date}/video/${prevVideo.id}` : '#'} 
+            disabled={!prevVideo}
+            onClick={(e) => { if(!prevVideo) e.preventDefault(); }}
+          >
+            ← 上一個
+          </NavButton>
+          <NavButton 
+            to={nextVideo ? `/camera/${cameraId}/date/${date}/video/${nextVideo.id}` : '#'} 
+            disabled={!nextVideo}
+            onClick={(e) => { if(!nextVideo) e.preventDefault(); }}
+          >
+            下一個 →
+          </NavButton>
+        </NavigationButtons>
+      </NavigationBar>
       <PageTitle>監視錄影播放</PageTitle>
       <SubTitle>
         {cameraName} - {date.substring(0, 4)}-{date.substring(4, 6)}-{date.substring(6, 8)}
         {!isMobile && ` - ${video.name}`}
       </SubTitle>
       
-      <PlayerContainer>
-        {showVideo ? (
-          <VideoElement controls autoPlay crossOrigin="anonymous">
-            <source src={videoPath} type="video/mp4" />
-            您的瀏覽器不支援影片播放。
-          </VideoElement>
-        ) : (
-          <ThumbnailContainer>
-            <ThumbnailImage 
-              src={thumbnailUrl} 
-              alt={`${video.name} 縮略圖`}
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = "/placeholder-thumbnail.svg";
-                console.warn(`影片 ${videoId} 縮略圖載入失敗，使用佔位圖`);
-              }}
-            />
-            <PlayOverlay onClick={handlePlayClick}>
-              <PlayButton>▶</PlayButton>
-            </PlayOverlay>
-          </ThumbnailContainer>
-        )}
-        
-        <VideoInfo>
-          <VideoDetail className="hide-mobile">
-            <DetailLabel>檔案名稱:</DetailLabel>
-            <DetailValue>{video.name}</DetailValue>
-          </VideoDetail>
-          <VideoDetail className="hide-mobile">
-            <DetailLabel>錄製時間戳:</DetailLabel>
-            <DetailValue>{formatTimestamp(video.timestamp)}</DetailValue>
-          </VideoDetail>
-          <VideoDetail>
-            <DetailLabel>開始時間:</DetailLabel>
-            <DetailValue>{video.startTime}</DetailValue>
-          </VideoDetail>
-          <VideoDetail>
-            <DetailLabel>時長:</DetailLabel>
-            <DetailValue>{video.duration || '未知'}</DetailValue>
-          </VideoDetail>
-          <VideoDetail>
-            <DetailLabel>相機:</DetailLabel>
-            <DetailValue>{cameraName}</DetailValue>
-          </VideoDetail>
-        </VideoInfo>
-      </PlayerContainer>
+      <SlideContainer ref={containerRef}>
+        <PlayerContainer>
+          {showVideo ? (
+            <VideoElement ref={videoRef} controls autoPlay crossOrigin="anonymous">
+              <source src={videoPath} type="video/mp4" />
+              您的瀏覽器不支援影片播放。
+            </VideoElement>
+          ) : (
+            <ThumbnailContainer>
+              <ThumbnailImage 
+                src={thumbnailUrl} 
+                alt={`${video.name} 縮略圖`}
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "/placeholder-thumbnail.svg";
+                  console.warn(`影片 ${videoId} 縮略圖載入失敗，使用佔位圖`);
+                }}
+              />
+              <PlayOverlay onClick={handlePlayClick}>
+                <PlayButton>▶</PlayButton>
+              </PlayOverlay>
+            </ThumbnailContainer>
+          )}
+          
+          <VideoInfo>
+            <VideoDetail className="hide-mobile">
+              <DetailLabel>檔案名稱:</DetailLabel>
+              <DetailValue>{video.name}</DetailValue>
+            </VideoDetail>
+            <VideoDetail className="hide-mobile">
+              <DetailLabel>錄製時間戳:</DetailLabel>
+              <DetailValue>{formatTimestamp(video.timestamp)}</DetailValue>
+            </VideoDetail>
+            <VideoDetail>
+              <DetailLabel>開始時間:</DetailLabel>
+              <DetailValue>{video.startTime}</DetailValue>
+            </VideoDetail>
+            <VideoDetail>
+              <DetailLabel>時長:</DetailLabel>
+              <DetailValue>{video.duration || '未知'}</DetailValue>
+            </VideoDetail>
+            <VideoDetail>
+              <DetailLabel>相機:</DetailLabel>
+              <DetailValue>{cameraName}</DetailValue>
+            </VideoDetail>
+            <VideoDetail className="mobile-friendly">
+              <DetailLabel>導航提示:</DetailLabel>
+              <DetailValue>
+                {isMobile 
+                  ? '左右滑動以切換影片' 
+                  : '使用鍵盤左右箭頭鍵可以切換影片'}
+              </DetailValue>
+            </VideoDetail>
+          </VideoInfo>
+        </PlayerContainer>
+      </SlideContainer>
     </div>
   );
 };
