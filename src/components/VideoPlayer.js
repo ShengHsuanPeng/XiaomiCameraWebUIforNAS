@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { getDateVideos, getVideoPath, formatTimestamp, getVideoDuration, getApiBaseUrl } from '../utils/dataUtils';
+import { getDateVideos, getVideoPath, formatTimestamp, getVideoDuration, getApiBaseUrl, getCameraName } from '../utils/dataUtils';
 import theme from '../utils/theme';
 
 const PageTitle = styled.h1`
@@ -143,6 +143,7 @@ const VideoPlayer = () => {
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showVideo, setShowVideo] = useState(false);
+  const [cameraName, setCameraName] = useState(cameraId);
   
   useEffect(() => {
     const handleResize = () => {
@@ -189,6 +190,17 @@ const VideoPlayer = () => {
     }
   }, [cameraId, date, videoId]);
   
+  useEffect(() => {
+    if (!cameraId) return;
+    
+    const loadCameraName = async () => {
+      const name = await getCameraName(cameraId);
+      setCameraName(name);
+    };
+    
+    loadCameraName();
+  }, [cameraId]);
+  
   const handlePlayClick = () => {
     setShowVideo(true);
   };
@@ -216,8 +228,11 @@ const VideoPlayer = () => {
   return (
     <div>
       <BackLink to={`/camera/${cameraId}/date/${date}`}>← 返回影片列表</BackLink>
-      <PageTitle>觀看錄影</PageTitle>
-      {!isMobile && <SubTitle>{video.name}</SubTitle>}
+      <PageTitle>監視錄影播放</PageTitle>
+      <SubTitle>
+        {cameraName} - {date.substring(0, 4)}-{date.substring(4, 6)}-{date.substring(6, 8)}
+        {!isMobile && ` - ${video.name}`}
+      </SubTitle>
       
       <PlayerContainer>
         {showVideo ? (
@@ -259,9 +274,9 @@ const VideoPlayer = () => {
             <DetailLabel>時長:</DetailLabel>
             <DetailValue>{video.duration || '未知'}</DetailValue>
           </VideoDetail>
-          <VideoDetail className="hide-mobile">
-            <DetailLabel>相機 ID:</DetailLabel>
-            <DetailValue>{cameraId}</DetailValue>
+          <VideoDetail>
+            <DetailLabel>相機:</DetailLabel>
+            <DetailValue>{cameraName}</DetailValue>
           </VideoDetail>
         </VideoInfo>
       </PlayerContainer>

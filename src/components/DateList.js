@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { getCameraDates } from '../utils/dataUtils';
+import { getCameraDates, getCameraName, getCameraNameSync } from '../utils/dataUtils';
 import theme from '../utils/theme';
 
 const PageTitle = styled.h1`
@@ -461,6 +461,7 @@ const DateList = () => {
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [thumbnailErrors, setThumbnailErrors] = useState({});
+  const [cameraName, setCameraName] = useState(cameraId); // 預設使用 ID，後續更新
 
   // 篩選狀態
   const [dateFilter, setDateFilter] = useState('all');
@@ -523,6 +524,18 @@ const DateList = () => {
     if (cameraId) {
       loadDates();
     }
+  }, [cameraId]);
+  
+  // 載入相機名稱
+  useEffect(() => {
+    if (!cameraId) return;
+    
+    const loadCameraName = async () => {
+      const name = await getCameraName(cameraId);
+      setCameraName(name);
+    };
+    
+    loadCameraName();
   }, [cameraId]);
   
   // 根據選擇的日期和時間篩選日期
@@ -822,8 +835,8 @@ const DateList = () => {
   return (
     <div>
       <BackLink to="/">← 返回相機列表</BackLink>
-      <PageTitle>錄影日期時間</PageTitle>
-      <SubTitle>相機 ID: {cameraId}</SubTitle>
+      <PageTitle>監視錄影日期</PageTitle>
+      <SubTitle>{cameraName}</SubTitle>
       
       {dates.length === 0 ? (
         <p>此相機沒有錄影資料。</p>

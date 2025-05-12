@@ -6,7 +6,7 @@
 const BASE_PATH = process.env.REACT_APP_BASE_PATH || '/xiaomi_camera_videos';
 
 // 獲取 API 基礎 URL
-const getApiBaseUrl = () => {
+export const getApiBaseUrl = () => {
   // 如果在生產環境，使用相對路徑
   if (process.env.NODE_ENV === 'production') {
     return '';
@@ -22,11 +22,6 @@ const getApiBaseUrl = () => {
   const apiPort = process.env.REACT_APP_API_PORT || '5001';
   
   return `http://${apiHost}:${apiPort}`;
-  
-  // 舊的方式（根據前端 hostname 決定）可能導致連接問題
-  // return window.location.hostname === 'localhost' 
-  //   ? 'http://localhost:5001' 
-  //   : `http://${window.location.hostname}:5001`;
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -45,6 +40,9 @@ const dateFormat = {
   hourStart: 8,
   hourLength: 2
 };
+
+// 相機信息快取
+const cameraInfoCache = new Map();
 
 // 獲取所有相機列表
 export const getCameras = async () => {
@@ -219,5 +217,35 @@ export const clearDurationCache = (cameraId = null, date = null) => {
   }
 };
 
-// 導出 API 基礎 URL，方便其他模組使用
-export { getApiBaseUrl }; 
+// 獲取相機名稱
+export const getCameraName = async (cameraId) => {
+  // 先從快取中查找
+  if (cameraInfoCache.has(cameraId)) {
+    return cameraInfoCache.get(cameraId).name;
+  }
+  
+  try {
+    // 獲取所有相機信息
+    const cameras = await getCameras();
+    
+    // 更新快取
+    cameras.forEach(camera => {
+      cameraInfoCache.set(camera.id, camera);
+    });
+    
+    // 查找特定相機
+    const camera = cameras.find(cam => cam.id === cameraId);
+    return camera ? camera.name : cameraId;
+  } catch (error) {
+    console.error(`獲取相機 ${cameraId} 的名稱失敗:`, error);
+    return cameraId; // 如果失敗則返回 ID
+  }
+};
+
+// 同步版本，如果相機已經在本地緩存則直接返回
+export const getCameraNameSync = (cameraId) => {
+  if (cameraInfoCache.has(cameraId)) {
+    return cameraInfoCache.get(cameraId).name;
+  }
+  return cameraId; // 如果缺少緩存數據，返回 ID
+}; 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { getDateVideos, formatTimestamp, parseDateString, getVideoDuration, processVideos, getApiBaseUrl, clearDurationCache } from '../utils/dataUtils';
+import { getDateVideos, formatTimestamp, parseDateString, getVideoDuration, processVideos, getApiBaseUrl, clearDurationCache, getCameraName } from '../utils/dataUtils';
 import theme from '../utils/theme';
 import { io } from 'socket.io-client';
 
@@ -275,6 +275,7 @@ const VideoList = () => {
   const [socketConnected, setSocketConnected] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0); // 用於顯示處理進度
   const [socketRetries, setSocketRetries] = useState(0); // 追蹤 WebSocket 重連次數
+  const [cameraName, setCameraName] = useState(cameraId); // 預設使用 ID，後續更新
   
   // 使用 ref 追蹤已處理的影片數量和其他持久性狀態
   const processedCount = useRef(0);
@@ -830,6 +831,18 @@ const VideoList = () => {
     }
   }, [cameraId, date, updateVideoDuration, preloadNextThumbnails]);
 
+  // 載入相機名稱
+  useEffect(() => {
+    if (!cameraId) return;
+    
+    const loadCameraName = async () => {
+      const name = await getCameraName(cameraId);
+      setCameraName(name);
+    };
+    
+    loadCameraName();
+  }, [cameraId]);
+
   if (loading) {
     return <div>載入中...</div>;
   }
@@ -852,9 +865,14 @@ const VideoList = () => {
   
   return (
     <div>
-      <BackLink to={`/camera/${cameraId}`}>← 返回日期列表</BackLink>
-      <PageTitle>{dateInfo.formatted} 錄影列表</PageTitle>
-      <SubTitle>相機 ID: {cameraId}</SubTitle>
+      <div style={{ marginBottom: '1rem' }}>
+        <BackLink to={`/camera/${cameraId}`}>← 返回日期列表</BackLink>
+      </div>
+      
+      <PageTitle>監視錄影影片</PageTitle>
+      <SubTitle>
+        {cameraName} - {dateInfo.formatted}
+      </SubTitle>
       
       {videos.length === 0 ? (
         <p>此時段沒有錄影資料。</p>
