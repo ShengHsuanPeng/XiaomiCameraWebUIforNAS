@@ -1,22 +1,22 @@
 const path = require('path');
 const os = require('os');
 
-// 獲取本機 IP 地址
+// Get local IP address
 const getLocalIpAddress = () => {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      // 跳過非 IPv4 和內部 IP
+      // Skip non-IPv4 and internal IPs
       if (iface.family === 'IPv4' && !iface.internal) {
         return iface.address;
       }
     }
   }
-  return '0.0.0.0'; // 如果找不到合適的 IP，使用 0.0.0.0 (所有網路介面)
+  return '0.0.0.0'; // If no suitable IP is found, use 0.0.0.0 (all network interfaces)
 };
 
-// 解析環境變量中的相機映射
-// 格式: CAMERA_NAMES="cameraId1:名稱1,cameraId2:名稱2"
+// Parse camera names from environment variables
+// Format: CAMERA_NAMES="cameraId1:name1,cameraId2:name2"
 const parseCameraNames = () => {
   const cameraEnv = process.env.CAMERA_NAMES || '';
   const cameras = {};
@@ -30,7 +30,7 @@ const parseCameraNames = () => {
     });
   }
   
-  // 如果環境變量中沒有配置，使用默認值
+  // If no configuration in environment variables, use default values
   if (Object.keys(cameras).length === 0) {
     cameras['607ea43c610c'] = '一樓車庫';
     cameras['04cf8cce9d4e'] = '二樓陽台';
@@ -39,50 +39,50 @@ const parseCameraNames = () => {
   return cameras;
 };
 
-// 獲取相機名稱的函數，如果映射失敗則返回ID
+// Function to get camera name, returns ID if mapping fails
 const getCameraName = (cameraId) => {
   const cameras = parseCameraNames();
   return cameras[cameraId] || cameraId;
 };
 
 module.exports = {
-  // 伺服器設定
+  // Server settings
   server: {
     port: process.env.REACT_APP_API_PORT || 5001,
-    host: process.env.REACT_APP_API_HOST  || getLocalIpAddress(), // 使用本機 IP 地址
-    corsOrigins: ['http://localhost:3000', `http://${getLocalIpAddress()}:3000`], // 允許的來源
+    host: process.env.REACT_APP_API_HOST  || getLocalIpAddress(), // Use local IP address
+    corsOrigins: ['http://localhost:3000', `http://${getLocalIpAddress()}:3000`], // Allowed origins
   },
   
-  // 影片檔案的基礎路徑
+  // Base path for video files
   paths: {
     videos: process.env.REACT_APP_BASE_PATH || path.join(__dirname, 'xiaomi_camera_videos'),
-    // 如果需要指定其他路徑，可以在這裡添加
+    // If need to specify other paths, can add here
   },
   
-  // 相機 ID 到名稱的映射
+  // Camera ID to name mapping
   cameras: parseCameraNames(),
   
-  // 獲取相機名稱的輔助函數
+  // Helper function to get camera name
   getCameraName,
   
-  // 日期格式設定
+  // Date format settings
   dateFormat: {
-    // 用於解析和格式化日期的設定
-    yearStart: 0,  // 年份在日期字符串中的起始位置
-    yearLength: 4, // 年份的長度
-    monthStart: 4, // 月份在日期字符串中的起始位置
-    monthLength: 2, // 月份的長度
-    dayStart: 6,   // 日在日期字符串中的起始位置
-    dayLength: 2,  // 日的長度
-    hourStart: 8,  // 小時在日期字符串中的起始位置
-    hourLength: 2, // 小時的長度
+    // Settings for parsing and formatting dates
+    yearStart: 0,  // Starting position of year in date string
+    yearLength: 4, // Length of year
+    monthStart: 4, // Starting position of month in date string
+    monthLength: 2, // Length of month
+    dayStart: 6,   // Starting position of day in date string
+    dayLength: 2,  // Length of day
+    hourStart: 8,  // Starting position of hour in date string
+    hourLength: 2, // Length of hour
   },
   
-  // 前端設定
+  // Frontend settings
   client: {
-    // 用於前端的 API 基礎 URL
+    // API base URL for frontend
     apiBaseUrl: process.env.NODE_ENV === 'production' 
-      ? '' // 生產環境使用相對路徑
-      : process.env.REACT_APP_API_BASE_URL || `http://${getLocalIpAddress()}:5001` // 開發環境使用完整 URL
+      ? '' // Production environment uses relative path
+      : process.env.REACT_APP_API_BASE_URL || `http://${getLocalIpAddress()}:5001` // Development environment uses full URL
   }
 }; 

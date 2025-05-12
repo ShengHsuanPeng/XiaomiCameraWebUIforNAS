@@ -100,7 +100,7 @@ const VideoElement = styled.video`
 const ThumbnailContainer = styled.div`
   width: 100%;
   height: 0;
-  padding-top: 56.25%; /* 16:9 寬高比 */
+  padding-top: 56.25%; /* 16:9 aspect ratio */
   position: relative;
   background-color: black;
 `;
@@ -195,7 +195,7 @@ const SlideContainer = styled.div`
   touch-action: pan-y;
 `;
 
-// 時間軸容器樣式
+// Timeline container styles
 const TimelineContainer = styled.div`
   margin-bottom: 1.5rem;
   background-color: ${theme.background.paper};

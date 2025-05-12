@@ -1,9 +1,9 @@
-// 載入環境變數
+// Load environment variables
 require('dotenv').config();
 
-// 全局對象用於追蹤正在處理中的縮略圖，避免重複處理
+// Global object to track thumbnails being processed, to avoid duplicate processing
 global.processingThumbnails = {};
-// 追蹤已完成處理的房間
+// Track completed rooms
 global.completedRooms = new Set();
 
 const express = require('express');
@@ -17,101 +17,101 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { spawn } = require('child_process');
 
-// 檢查FFmpeg是否已安裝
+// Check if FFmpeg is installed
 const checkFFmpegInstallation = () => {
   try {
-    // 檢查是否可以獲取到ffprobe路徑
+    // Check if ffprobe path is available
     if (!ffprobe.path) {
-      console.error('❌ 找不到ffprobe路徑，縮略圖功能將無法正常工作！');
-      console.error('請確保 @ffprobe-installer/ffprobe 套件正確安裝。');
+      console.error('❌ Cannot find ffprobe path, thumbnail functionality will not work properly!');
+      console.error('Please ensure @ffprobe-installer/ffprobe package is installed correctly.');
     } else {
-      console.log('✅ ffprobe路徑已配置:', ffprobe.path);
+      console.log('✅ ffprobe path configured:', ffprobe.path);
     }
     
-    // 檢查系統中是否有FFmpeg
+    // Check if FFmpeg is available in the system
     const checkProcess = spawn('ffmpeg', ['-version']);
     
     checkProcess.on('error', (err) => {
-      console.error('❌ 系統中未安裝FFmpeg或未添加到PATH中！縮略圖生成功能將無法正常工作。');
-      console.error('請訪問 https://ffmpeg.org/download.html 下載並安裝FFmpeg，或使用以下命令：');
-      console.error('- Windows (使用Chocolatey): choco install ffmpeg');
-      console.error('- macOS (使用Homebrew): brew install ffmpeg');
+      console.error('❌ FFmpeg is not installed or not in PATH! Thumbnail generation will not work properly.');
+      console.error('Please visit https://ffmpeg.org/download.html to download and install FFmpeg, or use the following commands:');
+      console.error('- Windows (using Chocolatey): choco install ffmpeg');
+      console.error('- macOS (using Homebrew): brew install ffmpeg');
       console.error('- Linux (Ubuntu/Debian): sudo apt install ffmpeg');
       
-      console.error('安裝後，確保將FFmpeg添加到系統PATH環境變量中！');
+      console.error('After installation, make sure to add FFmpeg to your system PATH environment variable!');
     });
     
     checkProcess.stdout.on('data', (data) => {
-      console.log('✅ 系統已安裝FFmpeg:', data.toString().split('\n')[0]);
+      console.log('✅ FFmpeg is installed:', data.toString().split('\n')[0]);
     });
   } catch (error) {
-    console.error('檢查FFmpeg安裝時發生錯誤:', error);
+    console.error('Error checking FFmpeg installation:', error);
   }
 };
 
-// 設置 ffprobe 路徑
+// Set ffprobe path
 ffmpeg.setFfprobePath(ffprobe.path);
 
-// 啟動時檢查FFmpeg安裝
+// Check FFmpeg installation at startup
 checkFFmpegInstallation();
 
 const app = express();
 const PORT = config.server.port;
 const HOST = config.server.host;
 
-// 建立 HTTP 伺服器
+// Create HTTP server
 const server = http.createServer(app);
 
-// 建立 Socket.io 伺服器
+// Create Socket.io server
 const io = new Server(server, {
   cors: {
-    origin: '*', // 生產環境中應該限制為特定來源
+    origin: '*', // In production, this should be restricted to specific origins
     methods: ['GET', 'POST']
   }
 });
 
-// 視頻文件路徑 - 從配置文件中獲取
+// Video files path - get from config file
 const VIDEO_BASE_PATH = config.paths.videos;
-console.log(`影片目錄路徑: ${VIDEO_BASE_PATH}`);
+console.log(`Video directory path: ${VIDEO_BASE_PATH}`);
 
-// 縮略圖路徑
+// Thumbnail path
 const THUMBNAIL_BASE_PATH = path.join(__dirname, 'public', 'thumbnails');
 
-// 定義錯誤圖片路徑
+// Define error image path
 const DEFAULT_ERROR_IMAGE = path.join(__dirname, 'public', 'error_thumbnail.svg');
 
-// 確保縮略圖目錄存在
+// Ensure thumbnail directory exists
 const ensureThumbnailDirExists = async () => {
   try {
     await fs.access(THUMBNAIL_BASE_PATH);
   } catch (error) {
-    // 目錄不存在，創建它
+    // Directory doesn't exist, create it
     await fs.mkdir(THUMBNAIL_BASE_PATH, { recursive: true });
-    console.log('已創建縮略圖目錄:', THUMBNAIL_BASE_PATH);
+    console.log('Created thumbnail directory:', THUMBNAIL_BASE_PATH);
   }
 };
 
-// 啟動時確保縮略圖目錄存在
+// Ensure thumbnail directory exists at startup
 ensureThumbnailDirExists();
 
-// 啟用 CORS，允許特定來源
+// Enable CORS, allow specific origins
 app.use(cors({
   origin: function(origin, callback) {
-    // 允許來自無來源的請求（如移動應用或直接訪問）
+    // Allow requests with no origin (like mobile apps or direct access)
     if (!origin) return callback(null, true);
     
-    // 檢查來源是否在允許列表中
+    // Check if origin is in the allowed list
     if (config.server.corsOrigins.indexOf(origin) !== -1 || config.server.corsOrigins.includes('*')) {
       callback(null, true);
     } else {
-      callback(new Error('不允許的來源'));
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   exposedHeaders: ['Content-Length', 'Content-Type', 'Accept-Ranges', 'Content-Range']
 }));
 
-// 為視頻文件路徑添加額外的 CORS 頭部
+// Add extra CORS headers for video file paths
 app.use('/xiaomi_camera_videos', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -119,7 +119,7 @@ app.use('/xiaomi_camera_videos', (req, res, next) => {
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   res.header('Cross-Origin-Embedder-Policy', 'credentialless');
   
-  // 確保 MP4 文件有正確的 MIME 類型
+  // Ensure MP4 files have the correct MIME type
   if (req.path.endsWith('.mp4')) {
     res.header('Content-Type', 'video/mp4');
   }
@@ -133,52 +133,52 @@ app.use('/xiaomi_camera_videos', (req, res, next) => {
   }
 }));
 
-// 靜態檔案服務
+// Static file service
 app.use(express.static(path.join(__dirname, 'build')));
 app.use('/thumbnails', express.static(THUMBNAIL_BASE_PATH));
 
-// 配置常數 - 可調整以平衡性能
-const THUMBNAIL_GENERATION_TIMEOUT = 10000; // 10秒超時
-const DURATION_QUERY_TIMEOUT = 15000;  // 15秒超時
-const VIDEO_BATCH_SIZE = 5; // 一批處理的影片數量
-const BATCH_INTERVAL = 500; // 批次之間的間隔時間 (毫秒)
+// Configuration constants - can be adjusted to balance performance
+const THUMBNAIL_GENERATION_TIMEOUT = 10000; // 10 seconds timeout
+const DURATION_QUERY_TIMEOUT = 15000;  // 15 seconds timeout
+const VIDEO_BATCH_SIZE = 5; // Number of videos to process in a batch
+const BATCH_INTERVAL = 500; // Interval between batches (milliseconds)
 
-// 保存已處理的時長資訊的快取
+// Cache for storing processed duration information
 const durationCache = new Map();
 const thumbnailCache = new Map();
-const thumbnailFailCache = new Set(); // 記錄生成失敗的縮略圖
+const thumbnailFailCache = new Set(); // Record thumbnails that failed to generate
 
-// 獲取影片時長的函數
+// Function to get video duration
 const getVideoDuration = (filePath) => {
   return new Promise((resolve, reject) => {
-    // 檢查快取中是否已存在
+    // Check if already exists in cache
     if (durationCache.has(filePath)) {
-      // console.log(`從快取返回影片時長: ${filePath}`);
+      // console.log(`Returning video duration from cache: ${filePath}`);
       return resolve(durationCache.get(filePath));
     }
     
-    // 添加超時處理
+    // Add timeout handling
     const timeout = setTimeout(() => {
-      console.warn(`獲取影片時長超時: ${filePath}`);
+      console.warn(`Getting video duration timed out: ${filePath}`);
       resolve(null);
     }, DURATION_QUERY_TIMEOUT);
     
-    console.log(`開始獲取影片時長: ${filePath}`);
+    console.log(`Starting to get video duration: ${filePath}`);
     ffmpeg.ffprobe(filePath, (err, metadata) => {
-      clearTimeout(timeout); // 清除超時計時器
+      clearTimeout(timeout); // Clear timeout timer
       
       if (err) {
-        console.error('獲取影片時長失敗:', err);
-        resolve(null); // 失敗時返回 null，但不中斷流程
+        console.error('Failed to get video duration:', err);
+        resolve(null); // Return null on failure, but don't break the flow
       } else {
-        // 獲取時長（秒）
+        // Get duration in seconds
         const durationSeconds = metadata.format.duration;
-        // 轉換為分:秒格式
+        // Convert to minutes:seconds format
         const minutes = Math.floor(durationSeconds / 60);
         const seconds = Math.floor(durationSeconds % 60);
         const formattedDuration = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         
-        // 存入快取
+        // Store in cache
         durationCache.set(filePath, formattedDuration);
         
         resolve(formattedDuration);
@@ -187,97 +187,97 @@ const getVideoDuration = (filePath) => {
   });
 };
 
-// 生成影片縮略圖的函數
+// Function to generate video thumbnail
 const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, videoId) => {
   try {
-    // 組成快取鍵
+    // Create cache key
     const cacheKey = `${cameraId}_${date}_${videoId}`;
     
-    // 檢查是否已知生成失敗，避免重複嘗試
+    // Check if known to fail, avoid retrying
     if (thumbnailFailCache.has(cacheKey)) {
-      console.log(`縮略圖先前生成失敗，直接使用錯誤圖片: ${cacheKey}`);
+      console.log(`Thumbnail previously failed to generate, using error image directly: ${cacheKey}`);
       return await useErrorImage(thumbnailPath, cacheKey, cameraId, date);
     }
     
-    // 檢查快取中是否已存在
+    // Check if already exists in cache
     if (thumbnailCache.has(cacheKey)) {
-      // console.log(`從快取返回縮略圖路徑: ${cacheKey}`);
+      // console.log(`Returning thumbnail path from cache: ${cacheKey}`);
       return thumbnailCache.get(cacheKey);
     }
     
-    // 創建進行中的處理標記，避免重複處理
+    // Create processing marker to avoid duplicate processing
     if (global.processingThumbnails[cacheKey]) {
-      console.log(`縮略圖 ${cacheKey} 正在處理中，跳過重複請求`);
+      console.log(`Thumbnail ${cacheKey} is already being processed, skipping duplicate request`);
       return null;
     }
     
-    // 標記為處理中
+    // Mark as processing
     global.processingThumbnails[cacheKey] = true;
     
     try {
-      // 檢查縮略圖是否已存在
+      // Check if thumbnail already exists
       try {
         await fs.access(thumbnailPath);
-        // 如果縮略圖已存在，直接返回路徑並存入快取
+        // If thumbnail exists, return path and store in cache
         const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
         thumbnailCache.set(cacheKey, relativePath);
         
-        // 移除處理中標記
+        // Remove processing marker
         delete global.processingThumbnails[cacheKey];
         
         return relativePath;
       } catch (error) {
-        // 縮略圖不存在，需要生成
-        // 確保縮略圖目錄存在
+        // Thumbnail doesn't exist, need to generate
+        // Ensure thumbnail directory exists
         await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
         
-        // 先檢查影片文件是否存在
+        // First check if video file exists
         try {
           await fs.access(videoPath);
         } catch (videoError) {
-          console.error(`影片文件不存在: ${videoPath}`, videoError);
+          console.error(`Video file doesn't exist: ${videoPath}`, videoError);
           delete global.processingThumbnails[cacheKey];
           thumbnailFailCache.add(cacheKey);
           return await useErrorImage(thumbnailPath, cacheKey, cameraId, date);
         }
         
         return new Promise((resolve, reject) => {
-          // 添加超時處理，避免無限等待
+          // Add timeout handling to avoid infinite waiting
           const timeoutId = setTimeout(() => {
-            console.warn(`縮略圖生成超時: ${videoPath}`);
-            // 超時時使用錯誤圖片並記錄失敗
+            console.warn(`Thumbnail generation timed out: ${videoPath}`);
+            // Use error image on timeout and record failure
             thumbnailFailCache.add(cacheKey);
             
-            // 移除處理中標記
+            // Remove processing marker
             delete global.processingThumbnails[cacheKey];
             
             useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
           }, THUMBNAIL_GENERATION_TIMEOUT);
           
-          console.log(`開始生成縮略圖: ${videoPath}`);
+          console.log(`Starting to generate thumbnail: ${videoPath}`);
           
-          // 使用try-catch包裝ffmpeg調用，避免導致崩潰
+          // Use try-catch to wrap ffmpeg call to avoid causing crash
           try {
             ffmpeg(videoPath)
               .on('error', (err) => {
-                clearTimeout(timeoutId); // 清除超時
-                console.error('生成縮略圖失敗:', err);
-                // 記錄失敗以避免重複嘗試
+                clearTimeout(timeoutId); // Clear timeout
+                console.error('Failed to generate thumbnail:', err);
+                // Record failure to avoid retrying
                 thumbnailFailCache.add(cacheKey);
                 
-                // 移除處理中標記
+                // Remove processing marker
                 delete global.processingThumbnails[cacheKey];
                 
-                // 失敗時使用錯誤圖片
+                // Use error image on failure
                 useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
               })
               .on('end', () => {
-                clearTimeout(timeoutId); // 清除超時
+                clearTimeout(timeoutId); // Clear timeout
                 const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
-                // 存入快取
+                // Store in cache
                 thumbnailCache.set(cacheKey, relativePath);
                 
-                // 移除處理中標記
+                // Remove processing marker
                 delete global.processingThumbnails[cacheKey];
                 
                 resolve(relativePath);
@@ -286,12 +286,12 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
                 count: 1,
                 folder: path.dirname(thumbnailPath),
                 filename: path.basename(thumbnailPath),
-                size: '320x180', // 16:9 縮略圖大小
-                timestamps: ['5%'] // 從影片開始的 5% 位置取截圖，避免黑畫面
+                size: '320x180', // 16:9 thumbnail size
+                timestamps: ['5%'] // Take screenshot from 5% of the video, to avoid black screen
               });
           } catch (ffmpegError) {
-            clearTimeout(timeoutId); // 清除超時
-            console.error('啟動ffmpeg失敗:', ffmpegError);
+            clearTimeout(timeoutId); // Clear timeout
+            console.error('Failed to start ffmpeg:', ffmpegError);
             thumbnailFailCache.add(cacheKey);
             delete global.processingThumbnails[cacheKey];
             useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
@@ -299,43 +299,43 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
         });
       }
     } catch (error) {
-      // 移除處理中標記
+      // Remove processing marker
       delete global.processingThumbnails[cacheKey];
       throw error;
     }
   } catch (error) {
-    console.error('處理縮略圖時發生錯誤:', error);
+    console.error('Error processing thumbnail:', error);
     return null;
   }
 };
 
-console.log('生成縮略圖函數已定義');
-// 當 ffmpeg 失敗時使用預設錯誤圖片的函數
+console.log('Thumbnail generation function defined');
+// Function to use default error image when ffmpeg fails
 const useErrorImage = async (thumbnailPath, cacheKey, cameraId, date) => {
   try {
-    // 檢查預設錯誤圖片是否存在
+    // Check if default error image exists
     await fs.access(DEFAULT_ERROR_IMAGE);
     
-    // 複製預設錯誤圖片到目標位置
+    // Copy default error image to target location
     await fs.copyFile(DEFAULT_ERROR_IMAGE, thumbnailPath);
     
-    // 返回相對路徑
+    // Return relative path
     const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
     thumbnailCache.set(cacheKey, relativePath);
     return relativePath;
   } catch (error) {
-    console.error('複製錯誤圖片失敗:', error);
-    // 如果無法複製錯誤圖片，返回固定的錯誤圖片路徑
+    console.error('Failed to copy error image:', error);
+    // If unable to copy error image, return fixed error image path
     return '/error_thumbnail.jpg';
   }
 };
 
-// 從配置中獲取相機名稱，如果不存在則使用默認格式
+// Get camera name from config, or use default format if not exists
 const getCameraName = (cameraId) => {
-  return config.cameras[cameraId] || `相機 ${cameraId}`;
+  return config.cameras[cameraId] || `Camera ${cameraId}`;
 };
 
-// 解析日期字符串
+// Parse date string
 const parseDateString = (dateStr) => {
   const df = config.dateFormat;
   const year = dateStr.substring(df.yearStart, df.yearStart + df.yearLength);
@@ -352,41 +352,41 @@ const parseDateString = (dateStr) => {
   };
 };
 
-// 獲取所有相機列表
+// Get all camera list
 app.get('/api/cameras', async (req, res) => {
   try {
     const cameraDirs = await fs.readdir(VIDEO_BASE_PATH);
     
     const cameras = await Promise.all(cameraDirs.map(async (cameraId) => {
-      // 檢查是否為目錄
+      // Check if it's a directory
       const stats = await fs.stat(path.join(VIDEO_BASE_PATH, cameraId));
       if (stats.isDirectory()) {
-        // 從配置檔獲取相機名稱
+        // Get camera name from config file
         const name = getCameraName(cameraId);
         return { id: cameraId, name };
       }
       return null;
     }));
     
-    // 過濾掉非目錄項
+    // Filter out non-directory items
     res.json(cameras.filter(camera => camera !== null));
   } catch (error) {
-    console.error('獲取相機列表失敗:', error);
-    res.status(500).json({ error: '獲取相機列表失敗' });
+    console.error('Failed to get camera list:', error);
+    res.status(500).json({ error: 'Failed to get camera list' });
   }
 });
 
-// 獲取特定相機的日期列表
+// Get specific camera's date list
 app.get('/api/cameras/:cameraId/dates', async (req, res) => {
   try {
     const { cameraId } = req.params;
     const cameraPath = path.join(VIDEO_BASE_PATH, cameraId);
     
-    // 檢查相機目錄是否存在
+    // Check if camera directory exists
     try {
       await fs.access(cameraPath);
     } catch (error) {
-      return res.status(404).json({ error: '找不到指定的相機' });
+      return res.status(404).json({ error: 'Cannot find specified camera' });
     }
     
     const dateDirs = await fs.readdir(cameraPath);
@@ -394,7 +394,7 @@ app.get('/api/cameras/:cameraId/dates', async (req, res) => {
     const dates = await Promise.all(dateDirs.map(async (dateDir) => {
       const stats = await fs.stat(path.join(cameraPath, dateDir));
       if (stats.isDirectory()) {
-        // 使用配置中的日期解析函數
+        // Use date parsing function from config
         const dateInfo = parseDateString(dateDir);
         return {
           date: dateDir,
@@ -404,112 +404,112 @@ app.get('/api/cameras/:cameraId/dates', async (req, res) => {
       return null;
     }));
     
-    // 按日期排序（升序 - 從早到晚）
+    // Sort dates (ascending - from early to late)
     const sortedDates = dates
       .filter(date => date !== null)
       .sort((a, b) => a.date.localeCompare(b.date));
     
     res.json(sortedDates);
   } catch (error) {
-    console.error(`獲取相機 ${req.params.cameraId} 的日期列表失敗:`, error);
-    res.status(500).json({ error: `獲取日期列表失敗` });
+    console.error(`Failed to get date list for camera ${req.params.cameraId}:`, error);
+    res.status(500).json({ error: `Failed to get date list` });
   }
 });
 
-// WebSocket 連線處理
+// WebSocket connection processing
 io.on('connection', (socket) => {
-  console.log('新的WebSocket連線:', socket.id);
+  console.log('New WebSocket connection:', socket.id);
   
-  // 加入特定相機和日期的房間
+  // Join specific camera and date room
   socket.on('joinRoom', ({ cameraId, date }) => {
     const room = `${cameraId}_${date}`;
     socket.join(room);
-    console.log(`客戶端 ${socket.id} 加入房間 ${room}`);
+    console.log(`Client ${socket.id} joined room ${room}`);
   });
   
-  // 離開房間
+  // Leave room
   socket.on('leaveRoom', ({ cameraId, date }) => {
     const room = `${cameraId}_${date}`;
     socket.leave(room);
-    console.log(`客戶端 ${socket.id} 離開房間 ${room}`);
+    console.log(`Client ${socket.id} left room ${room}`);
     
-    // 檢查房間是否還有其他客戶端
+    // Check if room still has other clients
     const roomClients = io.sockets.adapter.rooms.get(room);
     if (!roomClients || roomClients.size === 0) {
-      // 如果房間中沒有客戶端，就清理相關資源
-      console.log(`房間 ${room} 中沒有客戶端，清理資源`);
+      // If room has no clients, clean up related resources
+      console.log(`Room ${room} has no clients, clean up resources`);
       global.completedRooms.delete(room);
     }
   });
   
-  // 處理特定影片信息請求
+  // Process specific video information request
   socket.on('requestVideoInfo', async ({ cameraId, date, videoId }) => {
     try {
-      console.log(`收到對影片 ${videoId} 的特殊請求`);
+      console.log(`Received special request for video ${videoId}`);
       
-      // 獲取影片文件路徑
+      // Get video file path
       const videosPath = path.join(VIDEO_BASE_PATH, cameraId, date);
       const videoFiles = await fs.readdir(videosPath);
       
-      // 尋找匹配的影片
+      // Find matching video
       const videoFile = videoFiles.find(file => file.endsWith('.mp4') && file.replace('.mp4', '') === videoId);
       
       if (videoFile) {
         const filePath = path.join(videosPath, videoFile);
-        // 獲取影片時長
+        // Get video duration
         const duration = await getVideoDuration(filePath);
         
-        // 發送信息回客戶端
+        // Send information back to client
         const room = `${cameraId}_${date}`;
         io.to(room).emit('durationUpdated', {
           videoId,
-          duration: duration || '未知',
+          duration: duration || 'Unknown',
           timestamp: Date.now(),
           isSpecialRequest: true
         });
         
-        console.log(`已回應特殊請求：影片 ${videoId} 時長為 ${duration || '未知'}`);
+        console.log(`Responded to special request: Video ${videoId} duration is ${duration || 'Unknown'}`);
       } else {
-        console.error(`找不到請求的影片: ${videoId}`);
+        console.error(`Cannot find requested video: ${videoId}`);
       }
     } catch (error) {
-      console.error(`處理影片信息特殊請求失敗:`, error);
+      console.error(`Failed to process special video information request:`, error);
     }
   });
   
   socket.on('disconnect', () => {
-    console.log('WebSocket客戶端斷開連線:', socket.id);
+    console.log('WebSocket client disconnected:', socket.id);
   });
 });
 
-// 分批處理函數 - 用於處理大量影片
+// Batch processing function - used to process large number of videos
 const processBatch = async (videos, videosPath, cameraId, date, room, io, startIndex = 0) => {
   const totalVideos = videos.length;
   const endIndex = Math.min(startIndex + VIDEO_BATCH_SIZE, totalVideos);
   
-  // 如果房間已標記為完成，則不再處理
+  // If room is marked as completed, don't process
   if (global.completedRooms.has(room)) {
-    console.log(`房間 ${room} 已完成處理，跳過剩餘批次`);
+    console.log(`Room ${room} is already processed, skipping remaining batches`);
     return;
   }
   
-  // console.log(`處理批次：${startIndex} 到 ${endIndex-1} (共 ${totalVideos} 個影片)`);
+  // console.log(`Processing batch: ${startIndex} to ${endIndex-1} (Total ${totalVideos} videos)`);
   
-  // 先處理第一個影片 - 優先處理
+  // First process first video - prioritize processing
   if (startIndex === 0 && videos.length > 0) {
     const firstVideo = videos[0];
     const filePath = path.join(videosPath, firstVideo.name);
     
     try {
-      // 獲取時長
+      // Get duration
       const duration = await getVideoDuration(filePath);
       
-      // 檢查房間是否仍在處理中
+      // Check if room is still being processed
       if (!global.completedRooms.has(room)) {
-        // 通知客戶端時長已獲取
+        // Notify clients duration is obtained
         io.to(room).emit('durationUpdated', { 
           videoId: firstVideo.id, 
-          duration: duration || '未知',
+          duration: duration || 'Unknown',
           timestamp: Date.now(),
           index: 0,
           total: totalVideos,
@@ -517,7 +517,7 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
         });
       }
       
-      // 獲取縮略圖
+      // Get thumbnail
       const thumbnailFileName = `${cameraId}_${date}_${firstVideo.id}.jpg`;
       const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, date, thumbnailFileName);
       
@@ -530,15 +530,15 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
         });
       }
     } catch (error) {
-      console.error(`處理第一個影片失敗 (${firstVideo.name}):`, error);
+      console.error(`Failed to process first video (${firstVideo.name}):`, error);
     }
   }
   
-  // 然後處理批次中的其他影片
+  // Then process other videos in the batch
   for (let i = Math.max(startIndex, 1); i < endIndex; i++) {
-    // 檢查房間是否仍在處理中
+    // Check if room is still being processed
     if (global.completedRooms.has(room)) {
-      console.log(`房間 ${room} 已完成處理，停止當前批次處理`);
+      console.log(`Room ${room} is already processed, stop current batch processing`);
       break;
     }
     
@@ -546,22 +546,22 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
     const filePath = path.join(videosPath, video.name);
     
     try {
-      // 獲取時長
+      // Get duration
       const duration = await getVideoDuration(filePath);
       
-      // 檢查房間是否仍在處理中
+      // Check if room is still being processed
       if (!global.completedRooms.has(room)) {
-        // 通知客戶端時長已獲取
+        // Notify clients duration is obtained
         io.to(room).emit('durationUpdated', { 
           videoId: video.id, 
-          duration: duration || '未知',
+          duration: duration || 'Unknown',
           timestamp: Date.now(),
           index: i,
           total: totalVideos
         });
       }
       
-      // 獲取縮略圖
+      // Get thumbnail
       const thumbnailFileName = `${cameraId}_${date}_${video.id}.jpg`;
       const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, date, thumbnailFileName);
       
@@ -574,12 +574,12 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
         });
       }
     } catch (error) {
-      console.error(`處理影片失敗 (${video.name}):`, error);
+      console.error(`Failed to process video (${video.name}):`, error);
       
       if (!global.completedRooms.has(room)) {
         io.to(room).emit('durationUpdated', { 
           videoId: video.id, 
-          duration: '處理出錯',
+          duration: 'Processing error',
           error: true,
           timestamp: Date.now(),
           index: i,
@@ -589,77 +589,77 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
     }
   }
   
-  // 如果還有更多批次，繼續處理
+  // If there are more batches, continue processing
   if (endIndex < totalVideos && !global.completedRooms.has(room)) {
     setTimeout(() => {
       processBatch(videos, videosPath, cameraId, date, room, io, endIndex);
     }, BATCH_INTERVAL);
   } else if (endIndex >= totalVideos && !global.completedRooms.has(room)) {
-    // 發送全部處理完成的通知
+    // Send notification of all processing completed
     io.to(room).emit('processingComplete', { 
       totalVideos,
       timestamp: Date.now()
     });
     
-    // 標記房間已完成處理
+    // Mark room as completed
     global.completedRooms.add(room);
-    console.log(`房間 ${room} 處理完成，已標記為已完成`);
+    console.log(`Room ${room} processing completed, marked as completed`);
   }
 };
 
-// 針對單一影片時長的專用API端點
+// Special API endpoint for single video duration
 app.get('/api/video-duration/:cameraId/:date/:videoId', async (req, res) => {
   try {
     const { cameraId, date, videoId } = req.params;
     const videosPath = path.join(VIDEO_BASE_PATH, cameraId, date);
     
-    // 檢查目錄是否存在
+    // Check if directory exists
     try {
       await fs.access(videosPath);
     } catch (error) {
-      return res.status(404).json({ error: '找不到指定的日期目錄' });
+      return res.status(404).json({ error: 'Cannot find specified date directory' });
     }
     
-    // 查找匹配的影片檔案
+    // Find matching video file
     const videoFiles = await fs.readdir(videosPath);
     const videoFile = videoFiles.find(file => file.endsWith('.mp4') && file.replace('.mp4', '') === videoId);
     
     if (!videoFile) {
-      return res.status(404).json({ error: '找不到指定的影片' });
+      return res.status(404).json({ error: 'Cannot find specified video' });
     }
     
-    // 獲取影片時長
+    // Get video duration
     const filePath = path.join(videosPath, videoFile);
     const duration = await getVideoDuration(filePath);
     
     res.json({ 
       videoId,
-      duration: duration || '未知',
+      duration: duration || 'Unknown',
       timestamp: Date.now()
     });
   } catch (error) {
-    console.error(`獲取影片時長失敗:`, error);
-    res.status(500).json({ error: '獲取影片時長失敗' });
+    console.error(`Failed to get video duration:`, error);
+    res.status(500).json({ error: 'Failed to get video duration' });
   }
 });
 
-// 批量處理影片縮略圖和時長
+// Batch process video thumbnails and duration
 app.get('/api/process-videos/:cameraId/:date', async (req, res) => {
   try {
     const { cameraId, date } = req.params;
     const videosPath = path.join(VIDEO_BASE_PATH, cameraId, date);
     
-    // 檢查目錄是否存在
+    // Check if directory exists
     try {
       await fs.access(videosPath);
     } catch (error) {
-      return res.status(404).json({ error: '找不到指定的日期目錄' });
+      return res.status(404).json({ error: 'Cannot find specified date directory' });
     }
     
-    // 獲取視頻列表
+    // Get video list
     const videoFiles = await fs.readdir(videosPath);
     
-    // 過濾出 .mp4 檔案並處理
+    // Filter out .mp4 files and process
     const videos = videoFiles
       .filter(file => file.endsWith('.mp4'))
       .map((file) => {
@@ -672,51 +672,51 @@ app.get('/api/process-videos/:cameraId/:date', async (req, res) => {
     
     videos.sort((a, b) => a.name.localeCompare(b.name));
     
-    // 構建房間名稱
+    // Build room name
     const room = `${cameraId}_${date}`;
     
-    // 立即返回確認信息
+    // Immediately return confirmation information
     res.json({ 
       status: 'processing',
       totalVideos: videos.length,
-      message: `開始處理 ${videos.length} 個影片，過程將透過 WebSocket 通知`
+      message: `Starting to process ${videos.length} videos, process will be notified through WebSocket`
     });
     
-    // 在背景開始處理
+    // Start processing in background
     processBatch(videos, videosPath, cameraId, date, room, io, 0);
     
   } catch (error) {
-    console.error(`批量處理影片失敗:`, error);
-    res.status(500).json({ error: '批量處理影片失敗' });
+    console.error(`Failed to batch process videos:`, error);
+    res.status(500).json({ error: 'Failed to batch process videos' });
   }
 });
 
-// 獲取特定相機和日期的影片列表
+// Get specific camera and date video list
 app.get('/api/cameras/:cameraId/dates/:date/videos', async (req, res) => {
   try {
     const { cameraId, date } = req.params;
     const videosPath = path.join(VIDEO_BASE_PATH, cameraId, date);
     
-    // 檢查影片目錄是否存在
+    // Check if video directory exists
     try {
       await fs.access(videosPath);
     } catch (error) {
-      return res.status(404).json({ error: '找不到指定的日期目錄' });
+      return res.status(404).json({ error: 'Cannot find specified date directory' });
     }
     
     const videoFiles = await fs.readdir(videosPath);
     
-    // 過濾出 .mp4 檔案
+    // Filter out .mp4 files
     const videos = videoFiles
       .filter(file => file.endsWith('.mp4'))
       .map((file) => {
-        // 從檔案名稱解析資訊
+        // Parse file name for information
         const nameWithoutExt = file.replace('.mp4', '');
         const parts = nameWithoutExt.split('_');
-        const startTime = parts[0]; // 例如 "55M55S" - 影片開始的時間（分:秒）
+        const startTime = parts[0]; // For example "55M55S" - video start time (minutes:seconds)
         const timestamp = parts[1] ? parseInt(parts[1], 10) : 0;
         
-        // 構建縮略圖路徑（不等待生成）
+        // Build thumbnail path (without waiting for generation)
         const thumbnailFileName = `${cameraId}_${date}_${nameWithoutExt}.jpg`;
         const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, date, thumbnailFileName);
         
@@ -724,115 +724,115 @@ app.get('/api/cameras/:cameraId/dates/:date/videos', async (req, res) => {
           id: nameWithoutExt,
           name: file,
           timestamp,
-          startTime: startTime.replace('M', ':').replace('S', ''), // 格式化為 "分:秒" 格式
-          duration: '載入中', // 先返回載入中，稍後更新
+          startTime: startTime.replace('M', ':').replace('S', ''), // Format as "minutes:seconds" format
+          duration: 'Loading', // Return loading first, update later
           thumbnail: `/thumbnails/${cameraId}/${date}/${thumbnailFileName}`
         };
       });
     
-    // 改為按檔名排序（以改善使用者體驗）
+    // Sort by file name (to improve user experience)
     videos.sort((a, b) => a.name.localeCompare(b.name));
     
-    // 先返回基本資訊，讓前端能快速顯示
+    // First return basic information, let frontend quickly display
     res.json(videos);
     
-    // 在背景進行縮略圖生成和時長獲取
+    // In background, perform thumbnail generation and duration retrieval
     (async () => {
       try {
         const room = `${cameraId}_${date}`;
         
-        // 使用批次處理來提高效率
+        // Use batch processing to improve efficiency
         processBatch(videos, videosPath, cameraId, date, room, io, 0);
         
       } catch (error) {
-        console.error('背景處理影片資訊失敗:', error);
+        console.error('Background processing video information failed:', error);
       }
     })();
   } catch (error) {
-    console.error(`獲取相機 ${req.params.cameraId} 日期 ${req.params.date} 的影片列表失敗:`, error);
-    res.status(500).json({ error: '獲取影片列表失敗' });
+    console.error(`Failed to get video list for camera ${req.params.cameraId} date ${req.params.date}:`, error);
+    res.status(500).json({ error: 'Failed to get video list' });
   }
 });
 
-// 獲取特定時間點的縮略圖
+// Get specific thumbnail at specific time point
 app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
   try {
     const { cameraId, dateStr } = req.params;
     const cacheKey = `${cameraId}_${dateStr}_thumb`;
     
-    // 檢查是否為已知失敗的縮略圖
+    // Check if it's a known failed thumbnail
     if (thumbnailFailCache.has(cacheKey)) {
-      console.log(`直接返回錯誤圖片: ${cacheKey}`);
+      console.log(`Directly return error image: ${cacheKey}`);
       return res.sendFile(DEFAULT_ERROR_IMAGE);
     }
     
-    // 檢查是否正在處理中
+    // Check if it's being processed
     if (global.processingThumbnails[cacheKey]) {
-      console.log(`縮略圖 ${cacheKey} 正在處理中，返回等待中狀態`);
-      return res.status(202).json({ status: 'processing', message: '縮略圖正在生成中，請稍後再試' });
+      console.log(`Thumbnail ${cacheKey} is being processed, return waiting status`);
+      return res.status(202).json({ status: 'processing', message: 'Thumbnail is being generated, please try again later' });
     }
     
-    // 解析日期字符串
+    // Parse date string
     const dateInfo = parseDateString(dateStr);
     const formattedDate = dateInfo.formatted;
     
-    // 檢查相機和日期目錄是否存在
+    // Check if camera and date directory exists
     const datePath = path.join(VIDEO_BASE_PATH, cameraId, dateStr);
     
     try {
       await fs.access(datePath);
     } catch (error) {
       thumbnailFailCache.add(cacheKey);
-      return res.status(404).json({ error: '找不到指定的日期目錄' });
+      return res.status(404).json({ error: 'Cannot find specified date directory' });
     }
     
-    // 查找該時間點的第一個影片文件
+    // Find first video file of that time point
     const videoFiles = await fs.readdir(datePath);
     const mp4Files = videoFiles.filter(file => file.endsWith('.mp4'));
     
     if (mp4Files.length === 0) {
       thumbnailFailCache.add(cacheKey);
-      return res.status(404).json({ error: '在指定時間沒有找到影片' });
+      return res.status(404).json({ error: 'No video found at specified time' });
     }
     
-    // 取第一個影片生成縮略圖
+    // Take first video to generate thumbnail
     const firstVideoFile = mp4Files[0];
     const videoPath = path.join(datePath, firstVideoFile);
     
-    // 生成縮略圖的文件名和路徑
+    // Generate thumbnail file name and path
     const thumbnailFileName = `${cameraId}_${dateStr}_thumb.jpg`;
     const thumbnailPath = path.join(THUMBNAIL_BASE_PATH, cameraId, thumbnailFileName);
     const thumbnailDir = path.dirname(thumbnailPath);
     
-    // 確保縮略圖目錄存在
+    // Ensure thumbnail directory exists
     await fs.mkdir(thumbnailDir, { recursive: true });
     
-    // 嘗試獲取現有縮略圖，如果不存在則生成
+    // Try to get existing thumbnail, if not exists generate
     try {
       await fs.access(thumbnailPath);
-      // 如果縮略圖已存在，直接返回
+      // If thumbnail exists, return directly
       return res.sendFile(thumbnailPath);
     } catch (error) {
-      // 縮略圖不存在，需要生成
-      console.log(`為相機 ${cameraId} 日期 ${dateStr} 生成縮略圖`);
+      // Thumbnail doesn't exist, need to generate
+      console.log(`Generating thumbnail for camera ${cameraId} date ${dateStr}`);
       
-      // 標記為處理中
+      // Mark as processing
       global.processingThumbnails[cacheKey] = true;
       
-      // 添加超時處理
+      // Add timeout handling
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
           delete global.processingThumbnails[cacheKey];
-          reject(new Error('縮略圖生成超時'));
+          reject(new Error('Thumbnail generation timed out'));
         }, THUMBNAIL_GENERATION_TIMEOUT);
       });
       
-      console.log(`開始生成縮略圖2: ${videoPath}`);
-      // 縮略圖生成處理
+      console.log(`Starting to generate thumbnail2: ${videoPath}`);
+      // Thumbnail generation processing
       const ffmpegPromise = new Promise((resolve, reject) => {
         ffmpeg(videoPath)
           .on('error', (err) => {
-            console.error('生成縮略圖失敗:', err);
+            console.error('Failed to generate thumbnail:', err);
             thumbnailFailCache.add(cacheKey);
             delete global.processingThumbnails[cacheKey];
             reject(err);
@@ -845,41 +845,41 @@ app.get('/api/thumbnails/:cameraId/:dateStr', async (req, res) => {
             count: 1,
             folder: thumbnailDir,
             filename: path.basename(thumbnailPath),
-            size: '320x180', // 16:9 縮略圖大小
-            timestamps: ['5%'] // 從影片開始的 5% 位置取截圖，避免黑畫面
+            size: '320x180', // 16:9 thumbnail size
+            timestamps: ['5%'] // Take screenshot from 5% of the video, to avoid black screen
           });
       });
       
-      // 使用 Promise.race 來處理可能的超時情況
+      // Use Promise.race to handle possible timeout situations
       try {
         const result = await Promise.race([ffmpegPromise, timeoutPromise]);
         return res.sendFile(result);
       } catch (err) {
-        console.error('縮略圖生成失敗或超時:', err);
+        console.error('Thumbnail generation failed or timed out:', err);
         thumbnailFailCache.add(cacheKey);
         delete global.processingThumbnails[cacheKey];
         
-        // 使用預設錯誤圖片
+        // Use default error image
         try {
           await fs.copyFile(DEFAULT_ERROR_IMAGE, thumbnailPath);
           return res.sendFile(thumbnailPath);
         } catch (copyErr) {
-          // 如果連複製也失敗，直接返回錯誤圖片
+          // If even copying fails, directly return error image
           if (await fileExists(DEFAULT_ERROR_IMAGE)) {
             return res.sendFile(DEFAULT_ERROR_IMAGE);
           } else {
-            return res.status(500).json({ error: '無法生成縮略圖' });
+            return res.status(500).json({ error: 'Cannot generate thumbnail' });
           }
         }
       }
     }
   } catch (error) {
-    console.error(`獲取縮略圖失敗:`, error);
-    return res.status(500).json({ error: '獲取縮略圖失敗' });
+    console.error(`Failed to get thumbnail:`, error);
+    return res.status(500).json({ error: 'Failed to get thumbnail' });
   }
 });
 
-// 檢查文件是否存在的輔助函數
+// Helper function to check if file exists
 const fileExists = async (filePath) => {
   try {
     await fs.access(filePath);
@@ -889,12 +889,12 @@ const fileExists = async (filePath) => {
   }
 };
 
-// 所有其他請求返回 React app
+// All other requests return React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-// 啟動伺服器
+// Start server
 server.listen(PORT, HOST, () => {
-  console.log(`伺服器運行在 http://${HOST}:${PORT}`);
+  console.log(`Server running at http://${HOST}:${PORT}`);
 }); 

@@ -128,14 +128,14 @@ const CameraList = () => {
   const [loading, setLoading] = useState(true);
   const [thumbnailErrors, setThumbnailErrors] = useState({});
   
-  // 載入相機列表
+  // Load camera list
   useEffect(() => {
     const loadCameras = async () => {
       try {
         const cameraList = await getCameras();
         setCameras(cameraList);
         
-        // 為每個相機載入日期
+        // Load dates for each camera
         const datesPromises = cameraList.map(async (camera) => {
           try {
             const response = await fetch(`${getApiBaseUrl()}/api/cameras/${camera.id}/dates`);
@@ -146,14 +146,14 @@ const CameraList = () => {
               }
             }
           } catch (err) {
-            console.error(`無法獲取相機 ${camera.id} 的日期:`, err);
+            console.error(`Unable to get dates for camera ${camera.id}:`, err);
           }
           return { cameraId: camera.id, dates: [] };
         });
         
         const results = await Promise.all(datesPromises);
         
-        // 將日期資訊轉換為對象格式
+        // Convert date information to object format
         const datesByCamera = {};
         results.forEach(result => {
           datesByCamera[result.cameraId] = result.dates;
@@ -161,7 +161,7 @@ const CameraList = () => {
         
         setCameraDates(datesByCamera);
       } catch (error) {
-        console.error('載入相機列表失敗:', error);
+        console.error('Failed to load camera list:', error);
       } finally {
         setLoading(false);
       }
@@ -170,17 +170,17 @@ const CameraList = () => {
     loadCameras();
   }, []);
   
-  // 處理相機縮略圖載入錯誤
+  // Handle camera thumbnail loading errors
   const handleThumbnailError = (cameraId) => {
-    console.warn(`相機 ${cameraId} 的縮略圖載入失敗，使用佔位圖`);
+    console.warn(`Thumbnail loading failed for camera ${cameraId}, using placeholder image`);
     setThumbnailErrors(prev => ({
       ...prev,
       [cameraId]: true
     }));
-    // 使用佔位圖，不再重試加載
+    // Use placeholder image, don't retry loading
   };
   
-  // 獲取相機的最近日期
+  // Get the latest date for a camera
   const getLatestDate = (cameraId) => {
     if (cameraDates[cameraId] && cameraDates[cameraId].length > 0) {
       return cameraDates[cameraId][0].date;
@@ -188,16 +188,16 @@ const CameraList = () => {
     return null;
   };
   
-  // 獲取縮略圖URL
+  // Get thumbnail URL
   const getThumbnailUrl = (cameraId) => {
-    // 獲取相機的最後一個可用日期時段
+    // Get the last available date period for the camera
     const latestDate = getLatestDate(cameraId);
     if (latestDate) {
-      // 使用與DateList.js相同的路徑格式
+      // Use the same path format as DateList.js
       return `${getApiBaseUrl()}/api/thumbnails/${cameraId}/${latestDate}`;
     }
     
-    // 如果沒有任何日期記錄，使用預設路徑
+    // If no date records are available, use default path
     return `${getApiBaseUrl()}/api/camera-thumbnail/${cameraId}`;
   };
   

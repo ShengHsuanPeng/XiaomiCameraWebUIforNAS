@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { getCameras } from '../utils/dataUtils';
 import theme from '../utils/theme';
 
-// 響應式側邊欄容器
+// Responsive sidebar container
 const SidebarContainer = styled.aside`
   background-color: ${theme.background.sidebar};
   padding: ${props => props.isMobile ? '0.75rem 1rem' : '1.5rem 1rem'};
@@ -15,13 +15,13 @@ const SidebarContainer = styled.aside`
     width: 250px;
   `}
   
-  // 在手機上隱藏標題
+  // Hide title on mobile
   ${props => props.isMobile && props.collapsed && `
     padding: 0.5rem;
   `}
 `;
 
-// 可折疊的標題區域
+// Collapsible header area
 const SidebarHeader = styled.div`
   display: flex;
   justify-content: space-between;
@@ -46,7 +46,7 @@ const ToggleButton = styled.button`
   padding: 0;
 `;
 
-// 相機列表樣式
+// Camera list styles
 const CameraList = styled.ul`
   list-style: none;
   padding: 0;
@@ -100,7 +100,7 @@ const Sidebar = ({ isMobile }) => {
     loadCameras();
   }, []);
   
-  // 切換折疊狀態
+  // Toggle collapsed state
   const toggleCollapsed = () => {
     if (isMobile) {
       setCollapsed(!collapsed);

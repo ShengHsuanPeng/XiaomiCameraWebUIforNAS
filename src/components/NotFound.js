@@ -38,9 +38,9 @@ const HomeLink = styled(Link)`
 const NotFound = () => {
   return (
     <Container>
-      <Title>404 - 頁面未找到</Title>
-      <Message>您嘗試訪問的頁面不存在或已被移除。</Message>
-      <HomeLink to="/">返回首頁</HomeLink>
+      <Title>404 - Page Not Found</Title>
+      <Message>The page you are trying to access does not exist or has been removed.</Message>
+      <HomeLink to="/">Return to Home</HomeLink>
     </Container>
   );
 };

@@ -59,7 +59,7 @@ const VideoCard = styled.div`
 const ThumbnailContainer = styled.div`
   position: relative;
   width: 100%;
-  padding-top: 56.25%; /* 16:9 寬高比 */
+  padding-top: 56.25%; /* 16:9 aspect ratio */
   background-color: ${theme.background.sidebar};
   overflow: hidden;
 `;
@@ -128,7 +128,7 @@ const VideoMeta = styled.div`
   }
 `;
 
-// 添加一個加載中的縮略圖占位
+// Add a loading thumbnail placeholder
 const ThumbnailPlaceholder = styled.div`
   position: absolute;
   top: 0;
@@ -143,7 +143,7 @@ const ThumbnailPlaceholder = styled.div`
   font-size: 0.9rem;
 `;
 
-// 添加一個加載中的动态效果
+// Add a loading animation effect
 const LoadingText = styled.span`
   color: ${theme.text.muted};
   font-style: italic;

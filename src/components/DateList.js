@@ -132,7 +132,7 @@ const TimeCard = styled(Link)`
 const TimeThumbContainer = styled.div`
   position: relative;
   width: 100%;
-  padding-top: 56.25%; /* 16:9 寬高比 */
+  padding-top: 56.25%; /* 16:9 aspect ratio */
   background-color: ${theme.background.sidebar};
   overflow: hidden;
 `;

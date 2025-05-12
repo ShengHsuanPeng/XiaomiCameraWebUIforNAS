@@ -2,54 +2,54 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// 獲取本機 IP 地址（與config.js中相同邏輯）
+// Get local IP address (same logic as in config.js)
 const getLocalIpAddress = () => {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      // 跳過非 IPv4 和內部 IP
+      // Skip non-IPv4 and internal IPs
       if (iface.family === 'IPv4' && !iface.internal) {
         return iface.address;
       }
     }
   }
-  return '192.168.68.69'; // 如果找不到合適的 IP，使用默認值
+  return '192.168.68.69'; // If no suitable IP is found, use default value
 };
 
-// 檢查並創建.env文件
+// Check and create .env file
 const setupEnvFile = () => {
   const envDevPath = path.join(__dirname, '..', '.env');
   
-  // 檢查文件是否存在
+  // Check if file exists
   if (!fs.existsSync(envDevPath)) {
-    console.log('.env 不存在，正在創建...');
+    console.log('.env does not exist, creating...');
     
-    // 獲取本機IP地址
+    // Get local IP address
     const localIp = getLocalIpAddress();
-    console.log(`檢測到本機IP地址: ${localIp}`);
+    console.log(`Detected local IP address: ${localIp}`);
     
-    // 準備環境變數內容
-    const envContent = `# API 配置（自動生成於 ${new Date().toISOString()}）
+    // Prepare environment variable content
+    const envContent = `# API configuration (auto-generated on ${new Date().toISOString()})
 REACT_APP_API_HOST=${localIp}
 REACT_APP_API_PORT=5001
 
-# 或者直接設置完整的 API 基礎 URL
+# Or directly set complete API base URL
 # REACT_APP_API_BASE_URL=http://${localIp}:5001
 
-# 基礎路徑設定
+# Base path setting
 REACT_APP_BASE_PATH=./xiaomi_camera_videos
 
-# 相機名稱映射
+# Camera name mapping
 CAMERA_NAMES=607ea43c610c:一樓車庫,04cf8cce9d4e:二樓陽台
 `;
     
-    // 寫入文件
+    // Write to file
     fs.writeFileSync(envDevPath, envContent);
-    console.log(`✅ 已創建 .env 並設置 API Host 為 ${localIp}`);
+    console.log(`✅ Created .env and set API Host to ${localIp}`);
   } else {
-    console.log('.env 已存在，跳過創建步驟');
+    console.log('.env already exists, skipping creation step');
   }
 };
 
-// 執行腳本
+// Execute script
 setupEnvFile(); 

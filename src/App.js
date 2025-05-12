@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import styled from 'styled-components';
 
-// 導入頁面組件
+// Import page components
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import CameraList from './components/CameraList';
@@ -11,7 +11,7 @@ import VideoList from './components/VideoList';
 import VideoPlayer from './components/VideoPlayer';
 import NotFound from './components/NotFound';
 
-// 樣式
+// Styles
 const AppContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -34,7 +34,7 @@ const ContentArea = styled.div`
 `;
 
 function App() {
-  // 檢測螢幕寬度，用於響應式設計
+  // Detect screen width for responsive design
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   
   useEffect(() => {
@@ -53,7 +53,7 @@ function App() {
       <AppContainer>
         <Header />
         <MainContent>
-          {/* 只在桌面版顯示側邊欄 */}
+          {/* Only show sidebar on desktop version */}
           {!isMobile && <Sidebar isMobile={false} />}
           <ContentArea>
             <Routes>

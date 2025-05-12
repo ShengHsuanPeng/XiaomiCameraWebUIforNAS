@@ -1,23 +1,23 @@
 /**
- * 從後端 API 獲取數據的工具函數
+ * Utility functions for fetching data from backend API
  */
 
-// 基於文件路徑獲取數據 - 使用環境變數
+// Get data based on file path - using environment variables
 const BASE_PATH = process.env.REACT_APP_BASE_PATH || '/xiaomi_camera_videos';
 
-// 獲取 API 基礎 URL
+// Get API base URL
 export const getApiBaseUrl = () => {
-  // 如果在生產環境，使用相對路徑
+  // If in production environment, use relative path
   if (process.env.NODE_ENV === 'production') {
     return '';
   }
   
-  // 嘗試從環境變數獲取
+  // Try to get from environment variables
   if (process.env.REACT_APP_API_BASE_URL) {
     return process.env.REACT_APP_API_BASE_URL;
   }
   
-  // 使用環境變數中的 IP 和端口，如果未設置則使用默認值
+  // Use IP and port from environment variables, or default values if not set
   const apiHost = process.env.REACT_APP_API_HOST || '192.168.68.69';
   const apiPort = process.env.REACT_APP_API_PORT || '5001';
   
@@ -26,10 +26,10 @@ export const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-// 前端快取，用於緩存影片時長資訊
+// Frontend cache for storing video duration information
 const durationCache = new Map();
 
-// 日期格式設定 (與後端 config.js 保持一致)
+// Date format settings (consistent with backend config.js)
 const dateFormat = {
   yearStart: 0,
   yearLength: 4,
@@ -41,108 +41,108 @@ const dateFormat = {
   hourLength: 2
 };
 
-// 相機信息快取
+// Camera information cache
 const cameraInfoCache = new Map();
 
-// 獲取所有相機列表
+// Get all cameras list
 export const getCameras = async () => {
   try {
-    console.log('正在獲取相機列表，API URL:', `${API_BASE_URL}/api/cameras`);
+    console.log('Getting camera list, API URL:', `${API_BASE_URL}/api/cameras`);
     const response = await fetch(`${API_BASE_URL}/api/cameras`);
     if (!response.ok) {
-      throw new Error(`HTTP 錯誤: ${response.status}`);
+      throw new Error(`HTTP error: ${response.status}`);
     }
     const data = await response.json();
-    console.log('獲取到的相機列表:', data);
+    console.log('Retrieved camera list:', data);
     return data;
   } catch (error) {
-    console.error('獲取相機列表失敗:', error);
+    console.error('Failed to get camera list:', error);
     return [];
   }
 };
 
-// 獲取特定相機的日期列表
+// Get date list for specific camera
 export const getCameraDates = async (cameraId) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/cameras/${cameraId}/dates`);
     if (!response.ok) {
-      throw new Error(`HTTP 錯誤: ${response.status}`);
+      throw new Error(`HTTP error: ${response.status}`);
     }
     return await response.json();
   } catch (error) {
-    console.error(`獲取相機 ${cameraId} 的日期列表失敗:`, error);
+    console.error(`Failed to get date list for camera ${cameraId}:`, error);
     return [];
   }
 };
 
-// 獲取特定相機和日期的影片列表
+// Get video list for specific camera and date
 export const getDateVideos = async (cameraId, date) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/cameras/${cameraId}/dates/${date}/videos`);
     if (!response.ok) {
-      throw new Error(`HTTP 錯誤: ${response.status}`);
+      throw new Error(`HTTP error: ${response.status}`);
     }
     return await response.json();
   } catch (error) {
-    console.error(`獲取相機 ${cameraId} 日期 ${date} 的影片列表失敗:`, error);
+    console.error(`Failed to get video list for camera ${cameraId} date ${date}:`, error);
     return [];
   }
 };
 
-// 獲取特定影片的時長
+// Get duration for specific video
 export const getVideoDuration = async (cameraId, date, videoId) => {
-  // 建立快取鍵
+  // Create cache key
   const cacheKey = `${cameraId}_${date}_${videoId}`;
   
-  // 檢查是否已經在快取中
+  // Check if already in cache
   if (durationCache.has(cacheKey)) {
-    console.log(`從前端快取中獲取影片時長: ${cacheKey}`);
+    console.log(`Getting video duration from frontend cache: ${cacheKey}`);
     return durationCache.get(cacheKey);
   }
   
   try {
     const response = await fetch(`${API_BASE_URL}/api/video-duration/${cameraId}/${date}/${videoId}`);
     if (!response.ok) {
-      throw new Error(`HTTP 錯誤: ${response.status}`);
+      throw new Error(`HTTP error: ${response.status}`);
     }
     const data = await response.json();
     
-    // 存入快取
+    // Store in cache
     if (data.duration) {
       durationCache.set(cacheKey, data.duration);
     }
     
     return data.duration;
   } catch (error) {
-    console.error(`獲取影片 ${videoId} 的時長失敗:`, error);
-    return '未知';
+    console.error(`Failed to get duration for video ${videoId}:`, error);
+    return 'Unknown';
   }
 };
 
-// 觸發批量處理影片資訊 (用於大量影片處理)
+// Trigger batch processing of video information (for processing large number of videos)
 export const processVideos = async (cameraId, date) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/process-videos/${cameraId}/${date}`);
     if (!response.ok) {
-      throw new Error(`HTTP 錯誤: ${response.status}`);
+      throw new Error(`HTTP error: ${response.status}`);
     }
     return await response.json();
   } catch (error) {
-    console.error(`觸發批量處理影片失敗:`, error);
+    console.error(`Failed to trigger batch video processing:`, error);
     return { status: 'error', message: error.message };
   }
 };
 
-// 獲取影片路徑
+// Get video path
 export const getVideoPath = (cameraId, date, videoName) => {
-  // 確保 API_BASE_URL 末尾不包含斜線
+  // Ensure API_BASE_URL doesn't end with a slash
   const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
   
-  // BASE_PATH 可能包含本地系統絕對路徑，需要提取有效的 API 路徑
-  // 例如: "/media/ext_hdd/share/xiaomi_camera_videos" 應變為 "/xiaomi_camera_videos"
+  // BASE_PATH may contain local system absolute path, need to extract valid API path
+  // For example: "/media/ext_hdd/share/xiaomi_camera_videos" should become "/xiaomi_camera_videos"
   let apiPath = "/xiaomi_camera_videos";
   
-  // 如果 BASE_PATH 包含 xiaomi_camera_videos，則使用它
+  // If BASE_PATH contains xiaomi_camera_videos, use it
   if (BASE_PATH.includes("xiaomi_camera_videos")) {
     apiPath = "/xiaomi_camera_videos";
   }
@@ -150,7 +150,7 @@ export const getVideoPath = (cameraId, date, videoName) => {
   return `${baseUrl}${apiPath}/${cameraId}/${date}/${videoName}`;
 };
 
-// 格式化時間戳記為可讀時間
+// Format timestamp to readable time
 export const formatTimestamp = (timestamp) => {
   const date = new Date(timestamp * 1000);
   return date.toLocaleString('zh-TW', {
@@ -163,7 +163,7 @@ export const formatTimestamp = (timestamp) => {
   });
 };
 
-// 從日期字符串解析年月日時
+// Parse year, month, day, hour from date string
 export const parseDateString = (dateStr) => {
   const year = dateStr.substring(dateFormat.yearStart, dateFormat.yearStart + dateFormat.yearLength);
   const month = dateStr.substring(dateFormat.monthStart, dateFormat.monthStart + dateFormat.monthLength);
@@ -179,17 +179,17 @@ export const parseDateString = (dateStr) => {
   };
 };
 
-// 清除時長快取，用於需要強制更新的場景
+// Clear duration cache, for scenarios that require forced update
 export const clearDurationCache = (cameraId = null, date = null) => {
   if (!cameraId && !date) {
-    // 清除所有快取
+    // Clear all cache
     durationCache.clear();
-    console.log('已清除所有影片時長快取');
+    console.log('Cleared all video duration cache');
     return;
   }
   
   if (cameraId && !date) {
-    // 清除特定相機的所有快取
+    // Clear all cache for specific camera
     const keysToDelete = [];
     durationCache.forEach((value, key) => {
       if (key.startsWith(`${cameraId}_`)) {
@@ -198,12 +198,12 @@ export const clearDurationCache = (cameraId = null, date = null) => {
     });
     
     keysToDelete.forEach(key => durationCache.delete(key));
-    console.log(`已清除相機 ${cameraId} 的所有影片時長快取`);
+    console.log(`Cleared all video duration cache for camera ${cameraId}`);
     return;
   }
   
   if (cameraId && date) {
-    // 清除特定相機和日期的所有快取
+    // Clear all cache for specific camera and date
     const keysToDelete = [];
     durationCache.forEach((value, key) => {
       if (key.startsWith(`${cameraId}_${date}_`)) {
@@ -212,40 +212,40 @@ export const clearDurationCache = (cameraId = null, date = null) => {
     });
     
     keysToDelete.forEach(key => durationCache.delete(key));
-    console.log(`已清除相機 ${cameraId} 日期 ${date} 的所有影片時長快取`);
+    console.log(`Cleared all video duration cache for camera ${cameraId} date ${date}`);
     return;
   }
 };
 
-// 獲取相機名稱
+// Get camera name
 export const getCameraName = async (cameraId) => {
-  // 先從快取中查找
+  // First look in cache
   if (cameraInfoCache.has(cameraId)) {
     return cameraInfoCache.get(cameraId).name;
   }
   
   try {
-    // 獲取所有相機信息
+    // Get all camera information
     const cameras = await getCameras();
     
-    // 更新快取
+    // Update cache
     cameras.forEach(camera => {
       cameraInfoCache.set(camera.id, camera);
     });
     
-    // 查找特定相機
+    // Find specific camera
     const camera = cameras.find(cam => cam.id === cameraId);
     return camera ? camera.name : cameraId;
   } catch (error) {
-    console.error(`獲取相機 ${cameraId} 的名稱失敗:`, error);
-    return cameraId; // 如果失敗則返回 ID
+    console.error(`Failed to get name for camera ${cameraId}:`, error);
+    return cameraId; // Return ID if failed
   }
 };
 
-// 同步版本，如果相機已經在本地緩存則直接返回
+// Synchronous version, directly returns if camera is already in local cache
 export const getCameraNameSync = (cameraId) => {
   if (cameraInfoCache.has(cameraId)) {
     return cameraInfoCache.get(cameraId).name;
   }
-  return cameraId; // 如果缺少緩存數據，返回 ID
+  return cameraId; // Return ID if missing cache data
 }; 
