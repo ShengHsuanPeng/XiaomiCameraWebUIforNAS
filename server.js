@@ -3,6 +3,8 @@ require('dotenv').config();
 
 // 全局對象用於追蹤正在處理中的縮略圖，避免重複處理
 global.processingThumbnails = {};
+// 追蹤已完成處理的房間
+global.completedRooms = new Set();
 
 const express = require('express');
 const path = require('path');
@@ -13,9 +15,45 @@ const ffprobe = require('@ffprobe-installer/ffprobe');
 const config = require('./config');
 const http = require('http');
 const { Server } = require('socket.io');
+const { spawn } = require('child_process');
+
+// 檢查FFmpeg是否已安裝
+const checkFFmpegInstallation = () => {
+  try {
+    // 檢查是否可以獲取到ffprobe路徑
+    if (!ffprobe.path) {
+      console.error('❌ 找不到ffprobe路徑，縮略圖功能將無法正常工作！');
+      console.error('請確保 @ffprobe-installer/ffprobe 套件正確安裝。');
+    } else {
+      console.log('✅ ffprobe路徑已配置:', ffprobe.path);
+    }
+    
+    // 檢查系統中是否有FFmpeg
+    const checkProcess = spawn('ffmpeg', ['-version']);
+    
+    checkProcess.on('error', (err) => {
+      console.error('❌ 系統中未安裝FFmpeg或未添加到PATH中！縮略圖生成功能將無法正常工作。');
+      console.error('請訪問 https://ffmpeg.org/download.html 下載並安裝FFmpeg，或使用以下命令：');
+      console.error('- Windows (使用Chocolatey): choco install ffmpeg');
+      console.error('- macOS (使用Homebrew): brew install ffmpeg');
+      console.error('- Linux (Ubuntu/Debian): sudo apt install ffmpeg');
+      
+      console.error('安裝後，確保將FFmpeg添加到系統PATH環境變量中！');
+    });
+    
+    checkProcess.stdout.on('data', (data) => {
+      console.log('✅ 系統已安裝FFmpeg:', data.toString().split('\n')[0]);
+    });
+  } catch (error) {
+    console.error('檢查FFmpeg安裝時發生錯誤:', error);
+  }
+};
 
 // 設置 ffprobe 路徑
 ffmpeg.setFfprobePath(ffprobe.path);
+
+// 啟動時檢查FFmpeg安裝
+checkFFmpegInstallation();
 
 const app = express();
 const PORT = config.server.port;
@@ -193,6 +231,16 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
         // 確保縮略圖目錄存在
         await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
         
+        // 先檢查影片文件是否存在
+        try {
+          await fs.access(videoPath);
+        } catch (videoError) {
+          console.error(`影片文件不存在: ${videoPath}`, videoError);
+          delete global.processingThumbnails[cacheKey];
+          thumbnailFailCache.add(cacheKey);
+          return await useErrorImage(thumbnailPath, cacheKey, cameraId, date);
+        }
+        
         return new Promise((resolve, reject) => {
           // 添加超時處理，避免無限等待
           const timeoutId = setTimeout(() => {
@@ -207,37 +255,47 @@ const generateThumbnail = async (videoPath, thumbnailPath, cameraId, date, video
           }, THUMBNAIL_GENERATION_TIMEOUT);
           
           console.log(`開始生成縮略圖: ${videoPath}`);
-          ffmpeg(videoPath)
-            .on('error', (err) => {
-              clearTimeout(timeoutId); // 清除超時
-              console.error('生成縮略圖失敗:', err);
-              // 記錄失敗以避免重複嘗試
-              thumbnailFailCache.add(cacheKey);
-              
-              // 移除處理中標記
-              delete global.processingThumbnails[cacheKey];
-              
-              // 失敗時使用錯誤圖片
-              useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
-            })
-            .on('end', () => {
-              clearTimeout(timeoutId); // 清除超時
-              const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
-              // 存入快取
-              thumbnailCache.set(cacheKey, relativePath);
-              
-              // 移除處理中標記
-              delete global.processingThumbnails[cacheKey];
-              
-              resolve(relativePath);
-            })
-            .screenshots({
-              count: 1,
-              folder: path.dirname(thumbnailPath),
-              filename: path.basename(thumbnailPath),
-              size: '320x180', // 16:9 縮略圖大小
-              timestamps: ['5%'] // 從影片開始的 5% 位置取截圖，避免黑畫面
-            });
+          
+          // 使用try-catch包裝ffmpeg調用，避免導致崩潰
+          try {
+            ffmpeg(videoPath)
+              .on('error', (err) => {
+                clearTimeout(timeoutId); // 清除超時
+                console.error('生成縮略圖失敗:', err);
+                // 記錄失敗以避免重複嘗試
+                thumbnailFailCache.add(cacheKey);
+                
+                // 移除處理中標記
+                delete global.processingThumbnails[cacheKey];
+                
+                // 失敗時使用錯誤圖片
+                useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
+              })
+              .on('end', () => {
+                clearTimeout(timeoutId); // 清除超時
+                const relativePath = `/thumbnails/${cameraId}/${date}/${path.basename(thumbnailPath)}`;
+                // 存入快取
+                thumbnailCache.set(cacheKey, relativePath);
+                
+                // 移除處理中標記
+                delete global.processingThumbnails[cacheKey];
+                
+                resolve(relativePath);
+              })
+              .screenshots({
+                count: 1,
+                folder: path.dirname(thumbnailPath),
+                filename: path.basename(thumbnailPath),
+                size: '320x180', // 16:9 縮略圖大小
+                timestamps: ['5%'] // 從影片開始的 5% 位置取截圖，避免黑畫面
+              });
+          } catch (ffmpegError) {
+            clearTimeout(timeoutId); // 清除超時
+            console.error('啟動ffmpeg失敗:', ffmpegError);
+            thumbnailFailCache.add(cacheKey);
+            delete global.processingThumbnails[cacheKey];
+            useErrorImage(thumbnailPath, cacheKey, cameraId, date).then(resolve).catch(reject);
+          }
         });
       }
     } catch (error) {
@@ -374,6 +432,14 @@ io.on('connection', (socket) => {
     const room = `${cameraId}_${date}`;
     socket.leave(room);
     console.log(`客戶端 ${socket.id} 離開房間 ${room}`);
+    
+    // 檢查房間是否還有其他客戶端
+    const roomClients = io.sockets.adapter.rooms.get(room);
+    if (!roomClients || roomClients.size === 0) {
+      // 如果房間中沒有客戶端，就清理相關資源
+      console.log(`房間 ${room} 中沒有客戶端，清理資源`);
+      global.completedRooms.delete(room);
+    }
   });
   
   // 處理特定影片信息請求
@@ -421,6 +487,12 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
   const totalVideos = videos.length;
   const endIndex = Math.min(startIndex + VIDEO_BATCH_SIZE, totalVideos);
   
+  // 如果房間已標記為完成，則不再處理
+  if (global.completedRooms.has(room)) {
+    console.log(`房間 ${room} 已完成處理，跳過剩餘批次`);
+    return;
+  }
+  
   // console.log(`處理批次：${startIndex} 到 ${endIndex-1} (共 ${totalVideos} 個影片)`);
   
   // 先處理第一個影片 - 優先處理
@@ -432,15 +504,18 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
       // 獲取時長
       const duration = await getVideoDuration(filePath);
       
-      // 通知客戶端時長已獲取
-      io.to(room).emit('durationUpdated', { 
-        videoId: firstVideo.id, 
-        duration: duration || '未知',
-        timestamp: Date.now(),
-        index: 0,
-        total: totalVideos,
-        isFirstVideo: true
-      });
+      // 檢查房間是否仍在處理中
+      if (!global.completedRooms.has(room)) {
+        // 通知客戶端時長已獲取
+        io.to(room).emit('durationUpdated', { 
+          videoId: firstVideo.id, 
+          duration: duration || '未知',
+          timestamp: Date.now(),
+          index: 0,
+          total: totalVideos,
+          isFirstVideo: true
+        });
+      }
       
       // 獲取縮略圖
       const thumbnailFileName = `${cameraId}_${date}_${firstVideo.id}.jpg`;
@@ -448,7 +523,7 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
       
       const thumbnail = await generateThumbnail(filePath, thumbnailPath, cameraId, date, firstVideo.id);
       
-      if (thumbnail) {
+      if (thumbnail && !global.completedRooms.has(room)) {
         io.to(room).emit('thumbnailGenerated', { 
           videoId: firstVideo.id, 
           thumbnail
@@ -461,6 +536,12 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
   
   // 然後處理批次中的其他影片
   for (let i = Math.max(startIndex, 1); i < endIndex; i++) {
+    // 檢查房間是否仍在處理中
+    if (global.completedRooms.has(room)) {
+      console.log(`房間 ${room} 已完成處理，停止當前批次處理`);
+      break;
+    }
+    
     const video = videos[i];
     const filePath = path.join(videosPath, video.name);
     
@@ -468,14 +549,17 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
       // 獲取時長
       const duration = await getVideoDuration(filePath);
       
-      // 通知客戶端時長已獲取
-      io.to(room).emit('durationUpdated', { 
-        videoId: video.id, 
-        duration: duration || '未知',
-        timestamp: Date.now(),
-        index: i,
-        total: totalVideos
-      });
+      // 檢查房間是否仍在處理中
+      if (!global.completedRooms.has(room)) {
+        // 通知客戶端時長已獲取
+        io.to(room).emit('durationUpdated', { 
+          videoId: video.id, 
+          duration: duration || '未知',
+          timestamp: Date.now(),
+          index: i,
+          total: totalVideos
+        });
+      }
       
       // 獲取縮略圖
       const thumbnailFileName = `${cameraId}_${date}_${video.id}.jpg`;
@@ -483,7 +567,7 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
       
       const thumbnail = await generateThumbnail(filePath, thumbnailPath, cameraId, date, video.id);
       
-      if (thumbnail) {
+      if (thumbnail && !global.completedRooms.has(room)) {
         io.to(room).emit('thumbnailGenerated', { 
           videoId: video.id, 
           thumbnail
@@ -492,28 +576,34 @@ const processBatch = async (videos, videosPath, cameraId, date, room, io, startI
     } catch (error) {
       console.error(`處理影片失敗 (${video.name}):`, error);
       
-      io.to(room).emit('durationUpdated', { 
-        videoId: video.id, 
-        duration: '處理出錯',
-        error: true,
-        timestamp: Date.now(),
-        index: i,
-        total: totalVideos
-      });
+      if (!global.completedRooms.has(room)) {
+        io.to(room).emit('durationUpdated', { 
+          videoId: video.id, 
+          duration: '處理出錯',
+          error: true,
+          timestamp: Date.now(),
+          index: i,
+          total: totalVideos
+        });
+      }
     }
   }
   
   // 如果還有更多批次，繼續處理
-  if (endIndex < totalVideos) {
+  if (endIndex < totalVideos && !global.completedRooms.has(room)) {
     setTimeout(() => {
       processBatch(videos, videosPath, cameraId, date, room, io, endIndex);
     }, BATCH_INTERVAL);
-  } else {
+  } else if (endIndex >= totalVideos && !global.completedRooms.has(room)) {
     // 發送全部處理完成的通知
     io.to(room).emit('processingComplete', { 
       totalVideos,
       timestamp: Date.now()
     });
+    
+    // 標記房間已完成處理
+    global.completedRooms.add(room);
+    console.log(`房間 ${room} 處理完成，已標記為已完成`);
   }
 };
 

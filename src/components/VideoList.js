@@ -560,6 +560,11 @@ const VideoList = () => {
           
           // 只有當新進度大於舊進度時才更新，避免進度條向後跳動
           setLoadingProgress(prevProgress => {
+            // 如果處理已完成(進度為101)，不再響應任何進度更新
+            if (prevProgress >= 101) {
+              return prevProgress;
+            }
+            
             if (newProgress > prevProgress) {
               console.log(`更新進度：${newProgress}% (${data.index + 1}/${data.total})`);
               return newProgress;
@@ -612,6 +617,13 @@ const VideoList = () => {
         // 3秒後自動隱藏進度顯示
         setTimeout(() => {
           setLoadingProgress(prevProgress => prevProgress === 100 ? 101 : prevProgress); // 101表示完成且應該隱藏
+          
+          // 取消對進度更新消息的監聽，避免接收不必要的舊消息
+          if (socket) {
+            // 可選：移除特定事件監聽器，避免不必要的處理
+            socket.off('durationUpdated');
+            console.log('已取消對進度更新消息的監聽');
+          }
         }, 3000);
       });
       

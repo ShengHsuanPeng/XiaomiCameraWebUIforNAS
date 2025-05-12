@@ -1,5 +1,33 @@
 #!/bin/bash
 
+# 檢查FFmpeg是否已安裝
+echo "檢查FFmpeg是否已安裝..."
+if command -v ffmpeg >/dev/null 2>&1; then
+  echo "✅ FFmpeg已安裝: $(ffmpeg -version | head -n 1)"
+else
+  echo "❌ 未找到FFmpeg！縮略圖生成功能將無法正常工作。"
+  echo "請按照README.md中的說明安裝FFmpeg。"
+  
+  # 根據系統類型顯示安裝指令
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "macOS: brew install ffmpeg"
+  elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    echo "Linux: sudo apt update && sudo apt install ffmpeg"
+  else
+    echo "Windows: 請訪問 https://ffmpeg.org/download.html 下載，或使用Chocolatey: choco install ffmpeg"
+  fi
+  
+  echo ""
+  echo "是否繼續啟動應用？(y/n)"
+  read -r answer
+  if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+    echo "已取消啟動。"
+    exit 1
+  fi
+  
+  echo "繼續啟動，但縮略圖功能可能無法正常工作。"
+fi
+
 # 顯示本機 IP 地址
 echo "獲取本機 IP 地址..."
 if [[ "$OSTYPE" == "darwin"* ]]; then
