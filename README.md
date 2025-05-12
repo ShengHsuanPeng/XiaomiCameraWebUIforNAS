@@ -214,3 +214,7 @@ The system automatically generates thumbnails for videos to help users quickly i
 ## License
 
 MIT 
+
+### Icon Attribution
+
+[Video call icons](https://www.flaticon.com/free-icons/video-call) created by Md Tanvirul Haque - [Flaticon](https://www.flaticon.com/)
